@@ -224,8 +224,14 @@ filter is not the same as being eligible.
 | Retrieval encoder | `BAAI/bge-m3` | MIT | 1.5 B params; supports dense, sparse, and multi-vector retrieval |
 | Reader / Reasoner | `mistralai/Mistral-7B-Instruct-v0.3` | Apache 2.0 | Strong instruction following; fits in 8 GB VRAM at 4-bit |
 | Reader (alt) | `meta-llama/Meta-Llama-3-8B-Instruct` | Llama 3 Community | Slightly better on financial reasoning; requires licence acceptance |
-| NLI judge (local) | `cross-encoder/nli-deberta-v3-large` | MIT | Use before submission to estimate faithfulness score offline |
+| NLI judge (local, 1 of 2) | `cross-encoder/nli-deberta-v3-large` | Apache-2.0 (weights) | Ensemble member. Use before submission to estimate faithfulness score offline |
+| NLI judge (local, 2 of 2) | `MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli` | MIT (weights) | Ensemble member. The scorer averages both; running only one does not reproduce it |
 | Tabular (text-blind) | `TabPFN` | MIT | Best for small cross-sections (< 1000 rows); classification only |
+
+The two judge models carry **different** weights licences, and the licence on the data they were
+trained on differs again from the licence on the weights — one of the two training sets is
+non-commercial. `THIRD-PARTY-NOTICES.md` names both, per model. Do not treat the ensemble as
+uniformly MIT.
 
 All locally run models must be baked into the Docker image. No HuggingFace Hub downloads are
 possible at scoring time — hub domains are not on the restricted-network allowlist, and
