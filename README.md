@@ -196,11 +196,9 @@ every model must be disclosed in submission metadata, and temperature/seed pinne
 supports it. API-based entries are verified statistically (bootstrap-CI overlap on rerun); BYO
 entries bit-reproducibly.
 
-**Budget (PROVISIONAL — not final).** A uniform per-unit model-API budget applies to every
-submission (provisional figure: 1,000,000 input + 100,000 output tokens per unit), enforced via
-proxy logs and spot audit. This figure has not been finalised, so treat it as a planning number and
-not a contract: build so that a change to it does not invalidate your approach. The final figure
-will be announced here before any scored run, and `SUBMISSION_CLI.md` carries the same statement.
+**Budget (FINAL, ruled 2026-08-28).** A uniform per-unit model-API budget applies to every
+submission (1,000,000 input + 100,000 output tokens per unit), enforced via
+proxy logs and spot audit. This figure is final.
 
 **Leaderboard.** One board; every entry is tagged with its category, models used (pinned
 versions), and training cutoffs.

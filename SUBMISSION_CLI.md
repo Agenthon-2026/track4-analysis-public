@@ -90,11 +90,10 @@ stays `none`. For the agent tracks, every submission declares one category in `s
    be declared in submission metadata (`models[].training_cutoff` in `submission.json`).
 4. **Pin temperature/seed** where the API supports it. `api`-category entries are verified
    *statistically* (bootstrap-CI overlap on organizer rerun); BYO entries bit-reproducibly.
-5. **Budget (PROVISIONAL — not final).** A uniform per-unit budget applies to every submission —
-   provisional figure: **1,000,000 input + 100,000 output tokens per unit** — enforced via proxy
+5. **Budget (FINAL, ruled 2026-08-28).** A uniform per-unit budget applies to every submission —
+   **1,000,000 input + 100,000 output tokens per unit** — enforced via proxy
    logs and spot audit. It applies to house-endpoint calls; locally-run bundled weights are bounded
-   by the card's wall clock and resource caps instead. The figure has not been finalised; treat it
-   as a planning number, and expect the final one to be announced before any scored run.
+   by the card's wall clock and resource caps instead.
 
 **One leaderboard.** All categories rank on a single board; every entry is tagged with its
 category, the models used (pinned versions), and their training cutoffs.
@@ -176,7 +175,9 @@ everything else to `simulate`. Six of the public dev units (`t3-gbatch-*`) are b
 
 ## Open Division tag
 
-Submissions whose every model call uses the house endpoint exclusively may set
-`house_endpoint_only: true` in `submission.json`. This drives an "Open Division" display
-filter of the single leaderboard (never a separate ranking) and is verified against the
-audited egress-proxy logs during the verification phase.
+Do **not** add `house_endpoint_only` -- or any key the descriptor schema does not list -- to
+`submission.json`: the schema refuses unknown keys, so a submission carrying it is rejected
+before it runs. Whether every model call used the house endpoint exclusively is read from
+the audited egress-proxy logs during the verification phase; it drives an "Open Division"
+display filter of the single leaderboard (never a separate ranking) and needs nothing
+from you.
