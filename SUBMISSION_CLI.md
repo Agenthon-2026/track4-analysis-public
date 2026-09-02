@@ -93,8 +93,7 @@ stays `none`. For the agent tracks, every submission declares one category in `s
 5. **Budget (FINAL, ruled 2026-08-28).** A uniform per-unit budget applies to every submission —
    **1,000,000 input + 100,000 output tokens per unit** — enforced via proxy
    logs and spot audit. It applies to house-endpoint calls; locally-run bundled weights are bounded
-   by the card's wall clock and resource caps instead. The figure has not been finalised; treat it
-   as a planning number, and expect the final one to be announced before any scored run.
+   by the card's wall clock and resource caps instead.
 
 **One leaderboard.** All categories rank on a single board; every entry is tagged with its
 category, the models used (pinned versions), and their training cutoffs.
