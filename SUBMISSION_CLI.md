@@ -89,7 +89,8 @@ stays `none`. For the agent tracks, every submission declares one category in `s
 3. **Disclose training cutoffs.** The training cutoff of every model used (API or bundled) MUST
    be declared in submission metadata (`models[].training_cutoff` in `submission.json`).
 4. **Pin temperature/seed** where the API supports it. `api`-category entries are verified
-   *statistically* (bootstrap-CI overlap on organizer rerun); BYO entries bit-reproducibly.
+   *statistically* (bootstrap-CI overlap on organizer rerun for T2/T3/T4; for T1, the single-pass
+   per-unit verdicts must agree exactly); BYO entries bit-reproducibly.
 5. **Budget (FINAL, ruled 2026-08-28).** A uniform per-unit budget applies to every submission —
    **1,000,000 input + 100,000 output tokens per unit** — enforced via proxy
    logs and spot audit. It applies to house-endpoint calls; locally-run bundled weights are bounded
