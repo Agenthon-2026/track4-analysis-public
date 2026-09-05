@@ -181,9 +181,11 @@ the harness (`g2`).
    (`$MODEL_ENDPOINT`); your contribution is the prompts, harness, system prompts, and agents.
    No participant API keys are injected and none exist (policy 2026-08-04) — the house endpoint
    is the only reachable model.
-2. **BYO mode** (`category = "byo-large"` for 80GB-class GPU images, `"byo-small"` for ≤~8B
-   models on CPU or small GPU): you bundle your own model weights in-image. BYO entries may
-   *also* call APIs as in mode 1.
+2. **BYO mode** (`category = "byo-large"` or `"byo-small"`, retained as legacy names): ship
+   one LoRA adapter, rank ≤ 64, for the organizer-served base model. Full model weights,
+   full fine-tuning, and a submission-run model server are not permitted. Your code calls the
+   supplied `MODEL_ENDPOINT` with `MODEL_NAME`, which names your adapter for that run.
+   See [adapter-only BYO](SUBMISSION_CLI.md#adapter-only-byo) for packaging and serving rules.
 
 At scoring time the container sees: `HTTP_PROXY`/`HTTPS_PROXY` pointing at the audited proxy,
 `MODEL_ENDPOINT` pointing at the organizer-hosted OpenAI-compatible endpoint (e.g.
@@ -432,8 +434,9 @@ baseline emits a fixed-band interval, which is a floor to beat, not a starting p
 
 **Firewall.** Your agent runs on a restricted network: no open internet, egress only through the
 organizer's audited proxy to the organizer-hosted `$MODEL_ENDPOINT` and nothing else —
-vendor model APIs are refused. Everything else — bundled model weights (BYO categories), retrieval indices,
-and resources — must be baked into the Docker image or available from the read-only corpus
+vendor model APIs are refused. Retrieval indices, dependencies, and other permitted resources
+must be baked into the Docker image or available from the read-only corpus
 mount. Vendor-side tools (web search, code execution, retrieval) must be disabled in API calls.
+BYO model submissions follow the [adapter-only contract](SUBMISSION_CLI.md#adapter-only-byo).
 Test locally with `docker run --network=none` before submitting to confirm your agent has no
 open-internet dependency and degrades gracefully when model APIs are unreachable.
