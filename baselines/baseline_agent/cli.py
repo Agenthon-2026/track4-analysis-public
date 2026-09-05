@@ -74,6 +74,8 @@ def _newest_eligible(docs: list[IndexedDoc], cutoff: str) -> IndexedDoc | None:
 def run(task_path: Path, corpus_dir: Path, out_path: Path) -> dict:
     task = json.loads(task_path.read_text(encoding="utf-8"))
     cutoff = task["cutoff_date"]
+    target = task.get("target") or {}
+    labels = target.get("labels")
     docs = build_index(corpus_dir)
     doc_dates = {d.doc_id: d.doc_date for d in docs}
 
@@ -97,7 +99,7 @@ def run(task_path: Path, corpus_dir: Path, out_path: Path) -> dict:
                     "claim": f"Evidence for {eid}: {hit.text[:160]}",
                 }
             )
-        pred = predict_entity(entity, span_text)
+        pred = predict_entity(entity, span_text, labels=labels)
         # Embargo filter BEFORE the >=1-claim fallback: a claim dropped as post-cutoff
         # must be replaced by the fallback's eligible citation, never leave the entity
         # with an empty claims list (the schema requires >=1 claim per entity).

@@ -3,9 +3,10 @@
 Replaces the open-weights LLM of the full baseline spec with a transparent rule:
 for the EPS-beat family it compares a corpus-extracted reported EPS against the
 entity's ``consensus_eps`` using the declared threshold; for other families it
-falls back to the most common neutral label. The point forecast and a calibrated
+falls back to a label from the task's declared vocabulary. The point forecast and
 interval are derived from the extracted value.
 """
+
 from __future__ import annotations
 
 import re
@@ -26,7 +27,9 @@ def classify_eps(reported: float, consensus: float, threshold_pct: float) -> str
     return "inline"
 
 
-def predict_entity(entity: dict, span_text: str) -> dict:
+def predict_entity(
+    entity: dict, span_text: str, *, labels: list[str] | None = None
+) -> dict:
     """Return {label, point_forecast, lo, hi} for one entity from its top span."""
     consensus = entity.get("consensus_eps")
     threshold = entity.get("threshold_pct", 0.05)
@@ -38,6 +41,17 @@ def predict_entity(entity: dict, span_text: str) -> dict:
         # No usable evidence — predict the neutral class with a wide interval.
         label = "inline"
         point = float(consensus) if consensus is not None else 0.0
+    # Labels are a task-owned vocabulary. Preserve the EPS classifier when its
+    # label is allowed; otherwise prefer inline if offered, then the first label
+    # in the declared order. This is a deterministic format baseline, not a claim
+    # that the fallback is the statistically most likely outcome.
+    if labels and label not in labels:
+        label = "inline" if "inline" in labels else labels[0]
     # Simple symmetric interval: +/- one threshold band around the point forecast.
     band = max(abs(point) * float(threshold) * 2.0, 0.05)
-    return {"label": label, "point_forecast": point, "lo": point - band, "hi": point + band}
+    return {
+        "label": label,
+        "point_forecast": point,
+        "lo": point - band,
+        "hi": point + band,
+    }
