@@ -70,10 +70,10 @@ composite score: ineligible.
 1. Uses the `corpus_ref` pointer from the entity row to retrieve relevant passages from the
    frozen corpus using hybrid BM25 + dense retrieval (BAAI/bge-m3 or equivalent).
 2. Passes the top-K retrieved passages plus the entity's tabular features to an LLM with a
-   structured prompt. The LLM tier can be a bundled open-weights checkpoint (e.g.,
-   Mistral-7B-Instruct, byo-small category) **or** an API call over the restricted network — the
-   organizer-hosted `$MODEL_ENDPOINT` (OpenAI-compatible) or a declared vendor model API through
-   the audited proxy (api category).
+   structured prompt. In official scoring, the reader calls the organizer-hosted
+   `$MODEL_ENDPOINT` with the supplied `$MODEL_NAME`. BYO means one LoRA adapter on the
+   organizer's base, not a bundled reader checkpoint or a model server. Vendor model APIs
+   are not permitted. See [adapter-only BYO](../SUBMISSION_CLI.md#adapter-only-byo).
 3. Generates a prediction (label or numeric estimate), a claim sentence, and a citation for each
    material statement.
 4. A **calibration head** (a small quantile regression model) converts the LLM's raw confidence
@@ -217,7 +217,11 @@ filter is not the same as being eligible.
 
 ---
 
-## Recommended open-weights models
+## Open-weights references for offline experiments
+
+The model list below supports offline experiments and local checks. The reader alternatives
+are not models you may bundle for official BYO scoring; that path follows the
+[adapter-only contract](../SUBMISSION_CLI.md#adapter-only-byo).
 
 | Role | Model | Licence | Notes |
 |------|-------|---------|-------|
@@ -233,11 +237,11 @@ trained on differs again from the licence on the weights — one of the two trai
 non-commercial. `THIRD-PARTY-NOTICES.md` names both, per model. Do not treat the ensemble as
 uniformly MIT.
 
-All locally run models must be baked into the Docker image. No HuggingFace Hub downloads are
-possible at scoring time — hub domains are not on the restricted-network allowlist, and
-`TRANSFORMERS_OFFLINE=1` is set in the scoring environment. API-accessed models (via the audited
-proxy or `$MODEL_ENDPOINT`) must instead be pinned to dated snapshot versions and disclosed —
-with their training cutoffs — in the submission metadata.
+Cache the weights needed for offline experiments and local judge checks before running them.
+Official scoring cannot fetch HuggingFace Hub weights: those domains are outside the restricted
+network allowlist, and `TRANSFORMERS_OFFLINE=1` is set in the scoring environment. The official
+reader uses the organizer endpoint. Declare pinned model and adapter versions and their training
+cutoffs as required by [the submission contract](../SUBMISSION_CLI.md#rules-for-model-api-use-restricted-mode).
 
 ---
 
