@@ -292,7 +292,11 @@ def _default_production_builder(spec: JudgeSpec, cache_dir: str) -> Any:
     from faithfulness.judge import DeBERTaNLIJudge
 
     members = [
-        DeBERTaNLIJudge(model_id=model_id, cache_dir=cache_dir)
+        DeBERTaNLIJudge(
+            model_id=model_id,
+            cache_dir=cache_dir,
+            revision=spec.model_revisions[model_id],
+        )
         for model_id in spec.model_ids
     ]
     return EnsembleNLIJudge(members)

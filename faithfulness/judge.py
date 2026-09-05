@@ -224,6 +224,10 @@ class DeBERTaNLIJudge:
         choice, not because no accelerator exists: this docstring used to cite
         ``gpu=false`` in ``card.toml`` as the reason, and both card files in
         this repo in fact declare ``gpu = true``.
+    revision : str | None
+        Model repository revision, shared by model and tokenizer loading. The
+        production factory supplies the exact revision from its verified judge
+        spec. Optional for standalone callers.
 
     Examples
     --------
@@ -238,6 +242,7 @@ class DeBERTaNLIJudge:
     model_id: str
     cache_dir: str = DEFAULT_CACHE_DIR
     device: int = -1  # -1 = CPU
+    revision: str | None = None
     _pipeline: ZeroShotClassificationPipeline | None = field(
         default=None, init=False, repr=False
     )
@@ -287,7 +292,8 @@ class DeBERTaNLIJudge:
         self._pipeline = pipeline(
             task="zero-shot-classification",
             model=self.model_id,
-            cache_dir=self.cache_dir,
+            revision=self.revision,
+            model_kwargs={"cache_dir": self.cache_dir},
             device=self.device,
         )
 
