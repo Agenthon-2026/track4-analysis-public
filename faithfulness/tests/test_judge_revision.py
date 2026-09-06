@@ -59,7 +59,8 @@ def test_production_spec_reaches_each_member_model_and_tokenizer_loader(
     spec = _spec(tmp_path)
     loads, calls = _record_loader(monkeypatch)
     ensemble, provenance = judge_factory.build_production_judge(spec)
-    assert loads == []  # Existing lazy loading remains in place.
+    assert len(loads) == len(spec.model_ids)
+    assert calls == []  # Loading the organizer assets evaluates no participant text.
     assert ensemble.entail("synthetic premise", "synthetic hypothesis") == 0.75
     assert loads == [
         {
