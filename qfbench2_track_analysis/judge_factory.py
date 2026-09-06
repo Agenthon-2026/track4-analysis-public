@@ -286,7 +286,7 @@ def build_production_judge(
 
 
 def _default_production_builder(spec: JudgeSpec, cache_dir: str) -> Any:
-    """Real ensemble over the pinned revisions. Requires `transformers` and staged weights."""
+    """Load the pinned ensemble inside the organizer-fault construction boundary."""
     from qfbench2_common.scoring.faithfulness import EnsembleNLIJudge
 
     from faithfulness.judge import DeBERTaNLIJudge
@@ -299,6 +299,11 @@ def _default_production_builder(spec: JudgeSpec, cache_dir: str) -> Any:
         )
         for model_id in spec.model_ids
     ]
+    # Loading uses only organizer configuration, before any participant text is evaluated.
+    # Check every member inside the organizer-fault construction boundary above. Standalone
+    # DeBERTa judges retain their lazy-loading behavior.
+    for member in members:
+        member._load()
     return EnsembleNLIJudge(members)
 
 
