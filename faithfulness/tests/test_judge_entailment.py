@@ -64,7 +64,8 @@ def test_claim_is_passed_as_the_candidate_label() -> None:
     assert call["sequences"] == PREMISE
     assert call["candidate_labels"] == [SUPPORTED]
     assert call["hypothesis_template"] == "{}"
-    # With a single candidate label, multi_label=False would softmax the score to 1.0.
+    # Keep the shipped two-way call explicit; False with one candidate also takes
+    # the pinned Transformers entailment-versus-contradiction path.
     assert call["multi_label"] is True
 
 
