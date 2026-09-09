@@ -139,20 +139,17 @@ inverts the ordering against a metric where larger is better, and scores
 themselves. Omitting `point_forecast` on a ranking unit is refused outright. In every case there is one entry in
 `entity_predictions` per entity row.
 
-Required fields for all task types:
-- `task_id`: copied from `task.json`; `schema_version`; and `target_type` — set it to the unit's
-  card value (`SUBMISSION_CLI.md` invariant 7). A `target_type` that disagrees with the card is
-  `t4.target_type_mismatch`, a whole-submission `SCHEMA_INVALID_OUTPUT` at `W = -0.27`; omitting
-  the field is accepted and scored, so never copy a literal one out of an example.
-- `entity_predictions`: one object per entity row, each with:
-  - `entity_id`, and `label` (classification) **or** `point_forecast` (regression **and** ranking);
-  - `interval`: the 90% confidence range `{"level": 0.90, "lo": …, "hi": …}` (`level` is pinned);
-  - `claims`: one or more citations, each with `doc_id`, `span_start`, `span_end`, `claim`.
-- `evidence_trace`: a human-readable summary of the retrieval and reasoning process.
+Use the executable `analysis.schema.json` bundled with `qfbench2-common` for required fields
+and the [answer template](templates/answer.example.json) for an example. The schema-validation
+command under **Quick start** reads that installed schema directly. The optional fields
+`schema_version`, `target_type` and `evidence_trace` are not required merely because this README's
+example includes them. If supplied, `target_type` must match the unit's declared target type;
+a mismatch fails the whole unit. The scorer also requires exactly the task's entity roster and
+the prediction appropriate to its target type, as described above.
 
 **These are not partial-credit penalties.** A missing `interval.lo` or `interval.hi`, an empty or
 absent `claims` array, or an `interval.level` other than the card's — on *any* single entity row —
-fails `g1_schema` for the **whole submission**: the unit is scored `t4.schema_invalid`
+fails `g1_schema` for the **whole unit**: the unit is scored `t4.schema_invalid`
 (`SCHEMA_INVALID_OUTPUT`) at the worst-case `W = -0.27`, and no coverage or faithfulness number is
 computed at all. Verified by running the scorer on each case.
 
@@ -297,6 +294,15 @@ against the per-citation NLI threshold of 0.5 (`tau_citation` in `card.toml`): a
 prediction is supported if some cited span entails it above 0.5. The admission gate then requires
 that at least 80% of the roster's predictions are supported (`faithfulness_threshold = 0.80`).
 
+**The current NLI quantity is two-way.** Each member uses the entailment-versus-contradiction
+normalization returned by the single-candidate call in
+[`DeBERTaNLIJudge.entail`](faithfulness/judge.py), then the ensemble averages those values.
+Neutral is omitted from that normalization; this is not a three-way probability or proof that
+the passage is non-neutral. The hypothesis comes from the submitted prediction, as described
+above. This release preserves that quantity and the existing scoring formula. A later scoring
+change requires a versioned release; this clarification does not establish a completed
+calibration or runtime-equivalence result.
+
 ---
 
 ## The tabular prediction baselines
@@ -352,9 +358,12 @@ the task's target type -- declared as `target.type` in `task.json`, and mirrored
 - **ranking**: Spearman rank correlation **rescaled to [0, 1]** as `(rho + 1) / 2`. A perfect
   ordering scores 1.0, a random one about 0.5, a perfectly reversed one 0.0.
 
-In all three, a missing or NaN prediction is scored worst-case for that row rather than dropped, so
-answering only the rows you are confident about cannot raise your quality
-(`qfbench2_common.scoring.faithfulness.predictive_quality`).
+On every target type, a missing entity or required prediction, or a nonfinite supplied numeric
+value, fails validation for the whole unit before predictive quality is computed. The unit
+receives the committed worst-case value; there is no per-row partial-credit replacement and
+no row is dropped to shrink a denominator. See
+[`align_predictions`](qfbench2_track_analysis/alignment.py) and
+[`score_unit`](qfbench2_track_analysis/scoring.py).
 
 `interval_coverage` is the empirical 90% coverage across the question set (fraction of rows
 where the true value falls inside `[lo, hi]`). A unit whose resolved outcome has **no numeric
@@ -364,8 +373,11 @@ calibration leg: the coverage term is dropped and `composite = w_acc × predicti
 quantity, put that numeric — in the prompt's units — in `point_forecast` / `interval`; an
 interval on a probability never covers a dollar `y`.
 
-Ineligible submissions (failed faithfulness gate or embargo violation) receive `score = None`
-and do not appear on the primary leaderboard.
+Participant failures, including failed faithfulness or embargo checks, receive the committed
+worst-case unit score `W = -0.27` and remain in the evaluation denominator. This differs from
+an organizer fault, which aborts scoring instead of assigning a participant score. A local
+smoke check without resolved outcomes also returns no numerical score and is explicitly
+non-rankable; it checks the interface, not prediction accuracy or production faithfulness.
 
 ---
 
