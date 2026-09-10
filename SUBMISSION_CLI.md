@@ -74,6 +74,9 @@ The unit card remains the authority for your container's resource limits.
 The adapter requirement applies to BYO model submissions; the shipped model-free baseline does
 not need an adapter.
 
+Offline training and the narrow approved-base cutoff exception are defined in the
+[Track 4 training policy](docs/TRAINING-POLICY.md). They do not expand these categories.
+
 ### Adapter-only BYO
 
 A LoRA (low-rank adaptation) adapter contains parameter updates for the organizer's base model.

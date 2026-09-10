@@ -190,6 +190,11 @@ At scoring time the container sees: `HTTP_PROXY`/`HTTPS_PROXY` pointing at the a
 without the eval network fall back to `--network=none`, so your agent must degrade gracefully
 (still emit a schema-valid `answer.json`) when model APIs are unreachable.
 
+**Offline training.** The [Track 4 training policy](docs/TRAINING-POLICY.md) permits eligible
+external training data within the existing artifact categories, requires cutoff-aware fitting,
+selection and calibration, and defines the narrow exception for approved Nemotron base
+pretraining. Evaluation inputs and citations stay within the official task and frozen corpus.
+
 **Reproducibility.** Model versions must be pinned (dated snapshots), the training cutoff of
 every model must be disclosed in submission metadata, and temperature/seed pinned where the API
 supports it. API-based entries are verified statistically (bootstrap-CI overlap on rerun); BYO
