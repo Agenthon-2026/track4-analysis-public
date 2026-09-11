@@ -230,7 +230,11 @@ a ceiling rather than a floor (`nemoguardrails` and `nvidia-nat` both pin `<3.14
 Track 4 inherits scoring utilities from the shared toolkit repository. Install them with:
 
 ```bash
-pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.3.1#subdirectory=common"
+# Pin the tag, and pin this one: v2.3.1 rejects a descriptor the evaluation verifier accepts
+# (it requires at least one `models` entry; the current contract allows `"models": []`).
+# `pip show qfbench2-common` reports 2.3.1 from this tag -- the metadata lags the tag. That is
+# cosmetic and expected; the code is the v2.4.0 code.
+pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.0#subdirectory=common"
 ```
 
 > **Pin a tag, never a branch.** Installing from a moving ref means your local result and your
@@ -373,7 +377,7 @@ and do not appear on the primary leaderboard.
 # baselines/requirements.txt is comments only -- the minimal baseline is standard library
 # by design -- so this line installs nothing. It is here because step 4 and step 5 need the
 # shared toolkit, which brings jsonschema with it.
-pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.3.1#subdirectory=common"
+pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.0#subdirectory=common"
 
 # 2. Run the RAG baseline
 python baselines/baseline_agent.py \
