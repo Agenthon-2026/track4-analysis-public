@@ -75,7 +75,7 @@ DOMAIN_MAX = 1.0
 
 #: Bumped whenever the composite, the gates or the evidence semantics change. Recorded in
 #: provenance so a leaderboard can be attributed to an implementation rather than to a repo state.
-SCORER_VERSION = "3.0.0"
+SCORER_VERSION = "3.1.0"
 
 _SCHEMA = schema_path("analysis.schema.json")
 

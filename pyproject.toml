@@ -4,14 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qfbench2-track-analysis"
-# 3.0.0 is a BREAKING major, and the break is deliberate: `build_verifier` now constructs a pinned
+# The version below is the SHARED scorer version: all four track packages carry the same number and
+# it is bumped on all four together (owner ruling 2026-09-11). `qfbench2_track_analysis.SCORER_VERSION`
+# is pinned to it by `tests/test_scorer_version.py`, so do not edit one without the other.
+#
+# The history the rest of this note describes is still the history: 3.0.0 was a BREAKING major for
+# this package, and the break was deliberate: `build_verifier` now constructs a pinned
 # production judge or raises an organizer fault (it previously built none and defaulted
 # faithfulness to 1.0), the entailment hypothesis comes from the submitted prediction rather than
 # from participant-authored claim text, alignment is driven by the trusted entity roster, and an
 # inadmissible unit scores W = -0.27 instead of `None`. A consumer pinned to 2.x must read the
 # "What changed" notes in `qfbench2_track_analysis/scoring.py` before moving. This is also the ONE
 # implementation: the private repo's same-named copy has been deleted.
-version = "3.0.0"
+version = "3.1.0"
 description = "QFBench 2.0 Track-4 verifier/scorer: qfbench2_track_analysis.scoring.build_verifier(ctx) (rankable, mandatory production judge) and build_smoke_verifier(ctx) (non-rankable preview). The shared faithfulness primitives live in qfbench2-common."
 requires-python = ">=3.13"
 dependencies = [
