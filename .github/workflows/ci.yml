@@ -73,7 +73,7 @@ jobs:
           # repo (the organizer deployment is not published), so nothing under `faithfulness/`
           # imports a web framework. pytest is for the tests/ fixture decorators.
           pip install "pytest==9.1.1"
-          pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.3.1#subdirectory=common"
+          pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.0#subdirectory=common"
       - name: Ruff lint
         run: ruff check scoring faithfulness qfbench2_track_analysis
       - name: Ruff format check
@@ -112,7 +112,7 @@ jobs:
           # Pinned deliberately: an unpinned ruff jumped 0.15.21 -> 0.16.0 mid-cycle in July
           # and reddened every track's lint job on untouched code. Same trap applies here.
           pip install "pytest==9.1.1" "transformers==5.15.0"
-          pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.3.1#subdirectory=common"
+          pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.0#subdirectory=common"
       # `python -m pytest` for the same sys.path reason as the firewall job above.
       - name: Scorer + judge tests
         run: python -m pytest scoring/tests faithfulness/tests -q
@@ -133,6 +133,6 @@ jobs:
       - name: Install shared toolkit
         run: |
           python -m pip install --upgrade pip
-          pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.3.1#subdirectory=common"
+          pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.0#subdirectory=common"
       - name: Validate all public units
         run: python .github/validate_units.py analysis
