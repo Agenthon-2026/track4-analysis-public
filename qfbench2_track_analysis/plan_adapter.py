@@ -35,6 +35,7 @@ from .codes import T4OrganizerFault
 __all__ = [
     "WEIGHT_KEYS",
     "entity_roster_from_entry",
+    "labels_from_entry",
     "scoring_params_from_entry",
     "trusted_inputs_for",
 ]
@@ -63,7 +64,47 @@ def entity_roster_from_entry(entry: RosterEntry) -> EntityRoster:
         raise T4OrganizerFault(
             f"C1 entry {entry.unit_handle!r}: entity_roster.count disagrees with entity_ids"
         )
-    return EntityRoster(entity_ids=tuple(str(x) for x in ids))
+    return EntityRoster(
+        entity_ids=tuple(str(x) for x in ids), labels=labels_from_entry(entry)
+    )
+
+
+def labels_from_entry(entry: RosterEntry) -> tuple[str, ...] | None:
+    """The unit's label vocabulary from the signed plan (C1 1.3.0, `scoring_params.labels`).
+
+    This is the platform half of `Agenthon2026#123` / private #89 F1. `align_predictions` refuses
+    a submitted label outside `roster.labels`; the local path fills that field from `task.json`
+    (`EntityRoster.from_task`), the platform path built the roster from the plan entry, and the
+    entry did not carry the vocabulary -- so the check ran locally and silently did not run on
+    the platform. Same submission, two verdicts.
+
+    A 1.2.0 plan still carries no `labels`; then this returns None and the check stays skipped for
+    that unit, exactly as before -- the ambiguity is the plan's, and the hub parser removes it for
+    1.3.0 documents (classification => required, regression/ranking => forbidden). What is present
+    is validated here too: a caller holding a `RosterEntry` from anywhere but a freshly parsed
+    plan reaches only this layer.
+    """
+    params = entry.scoring_params
+    if not isinstance(params, Mapping) or "labels" not in params:
+        return None
+    raw = params["labels"]
+    if params.get("target_type") != "classification":
+        raise T4OrganizerFault(
+            f"C1 entry {entry.unit_handle!r} carries a label vocabulary on a "
+            f"{params.get('target_type')!r} unit; only classification units have one"
+        )
+    if (
+        not isinstance(raw, list)
+        or len(raw) < 2
+        or not all(isinstance(x, str) and x and x == x.strip() for x in raw)
+        or len(set(raw)) != len(raw)
+    ):
+        raise T4OrganizerFault(
+            f"C1 entry {entry.unit_handle!r}: scoring_params.labels must be two or more unique "
+            "non-empty strings; the plan is signed, so a malformed vocabulary is ours, not the "
+            "participant's"
+        )
+    return tuple(raw)
 
 
 def scoring_params_from_entry(entry: RosterEntry) -> dict[str, Any]:
