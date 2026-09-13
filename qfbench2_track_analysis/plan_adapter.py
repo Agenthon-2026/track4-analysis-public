@@ -29,7 +29,7 @@ from typing import Any
 
 from qfbench2_common.contracts import EvaluationPlan, RosterEntry
 
-from .alignment import TARGET_TYPES, EntityRoster
+from .alignment import TARGET_TYPES, EntityRoster, validated_label_vocabulary
 from .codes import T4OrganizerFault
 
 __all__ = [
@@ -87,24 +87,11 @@ def labels_from_entry(entry: RosterEntry) -> tuple[str, ...] | None:
     params = entry.scoring_params
     if not isinstance(params, Mapping) or "labels" not in params:
         return None
-    raw = params["labels"]
-    if params.get("target_type") != "classification":
-        raise T4OrganizerFault(
-            f"C1 entry {entry.unit_handle!r} carries a label vocabulary on a "
-            f"{params.get('target_type')!r} unit; only classification units have one"
-        )
-    if (
-        not isinstance(raw, list)
-        or len(raw) < 2
-        or not all(isinstance(x, str) and x and x == x.strip() for x in raw)
-        or len(set(raw)) != len(raw)
-    ):
-        raise T4OrganizerFault(
-            f"C1 entry {entry.unit_handle!r}: scoring_params.labels must be two or more unique "
-            "non-empty strings; the plan is signed, so a malformed vocabulary is ours, not the "
-            "participant's"
-        )
-    return tuple(raw)
+    return validated_label_vocabulary(
+        params["labels"],
+        params.get("target_type"),
+        source=f"C1 entry {entry.unit_handle!r}: scoring_params.labels",
+    )
 
 
 def scoring_params_from_entry(entry: RosterEntry) -> dict[str, Any]:
