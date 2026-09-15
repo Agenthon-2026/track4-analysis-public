@@ -183,10 +183,18 @@ def build_unit(
         "task_id": "t4-SYNTH",
         "schema_version": "3",
         "family": "synthetic",
+        # A vocabulary belongs to a classification unit and to no other kind. This builder used to
+        # emit one on all three types, which is a shape no unit in either tree has: measured across
+        # `units/` and `units_archived/` in this repository and the private one, 34 classification
+        # units all declare `target.labels` and 0 of the 56 regression and ranking units do.
         "target": {
             "name": "eps_outcome",
             "type": target_type,
-            "labels": ["beat", "miss", "inline"],
+            **(
+                {"labels": ["beat", "miss", "inline"]}
+                if target_type == "classification"
+                else {}
+            ),
         },
         "prompt": "synthetic",
         "cutoff_date": cutoff,

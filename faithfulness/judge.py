@@ -21,16 +21,14 @@ Cache path: /model-cache/ (pre-staged in the evaluation Docker image).
 NLI direction convention
 ------------------------
 The *premise* is the cited passage from the corpus; the *hypothesis* is the
-claim made by the participant's answer.  A high entailment score means the
-passage genuinely supports the claim.  Contradiction or neutral means the
-claim goes beyond (or contradicts) what the passage says.
+sentence supplied by the caller. The Track 4 prediction checker constructs that
+sentence from the submitted prediction and trusted task schema, not claim prose.
 
-    entailment  →  faithful (score → 1.0)
-    neutral     →  neither supported nor refuted (score depends on model)
-    contradiction → unfaithful (score → 0.0)
-
-The returned float is the model's softmax probability for the "entailment"
-class, averaged across all models in the ensemble.
+Each member returns the two-way entailment-versus-contradiction softmax quantity
+from the single-candidate zero-shot call. Neutral is omitted from that
+normalization, so a high value does not establish a low neutral probability.
+The ensemble averages these member values. This is the retained scoring
+quantity, not a three-way entailment probability or a calibration guarantee.
 
 References
 ----------
@@ -203,12 +201,12 @@ class DeBERTaNLIJudge:
 
     NLI direction
     -------------
-    The cited passage is the *premise* (``sequences``) and the claim is the sole
+    The cited passage is the *premise* (``sequences``) and the hypothesis is the sole
     *candidate label*, with ``hypothesis_template="{}"`` so the pipeline's
-    hypothesis is the claim verbatim and ``multi_label=True`` so the returned
-    score is the independent ``P(entailment | premise, claim)``.  Passing
+    hypothesis is passed verbatim. ``multi_label=True`` requests the two-way
+    entailment-versus-contradiction normalization; neutral is excluded. Passing
     ``["entailment", "neutral", "contradiction"]`` as the candidate labels would
-    classify the premise against those three literal words and ignore the claim.
+    classify the premise against those three literal words and ignore the hypothesis.
 
     Parameters
     ----------
@@ -224,6 +222,10 @@ class DeBERTaNLIJudge:
         choice, not because no accelerator exists: this docstring used to cite
         ``gpu=false`` in ``card.toml`` as the reason, and both card files in
         this repo in fact declare ``gpu = true``.
+    revision : str | None
+        Model repository revision, shared by model and tokenizer loading. The
+        production factory supplies the exact revision from its verified judge
+        spec. Optional for standalone callers.
 
     Examples
     --------
@@ -238,6 +240,7 @@ class DeBERTaNLIJudge:
     model_id: str
     cache_dir: str = DEFAULT_CACHE_DIR
     device: int = -1  # -1 = CPU
+    revision: str | None = None
     _pipeline: ZeroShotClassificationPipeline | None = field(
         default=None, init=False, repr=False
     )
@@ -287,7 +290,8 @@ class DeBERTaNLIJudge:
         self._pipeline = pipeline(
             task="zero-shot-classification",
             model=self.model_id,
-            cache_dir=self.cache_dir,
+            revision=self.revision,
+            model_kwargs={"cache_dir": self.cache_dir},
             device=self.device,
         )
 
@@ -295,33 +299,31 @@ class DeBERTaNLIJudge:
         return self._pipeline
 
     def entail(self, premise: str, hypothesis: str) -> float:
-        """Return the entailment probability P(entailment | premise, hypothesis).
+        """Return the retained two-way entailment-versus-contradiction quantity.
 
-        The cited corpus passage is the *premise* and the participant's claim
-        is the *hypothesis*.  The pipeline classifies the pair as one of
-        ``["entailment", "neutral", "contradiction"]`` and returns the
-        softmax probabilities.  This method extracts the probability assigned
-        to ``"entailment"``.
+        The cited corpus passage is the *premise*. The caller supplies the
+        *hypothesis*; the Track 4 prediction checker derives it from the submitted
+        prediction and trusted task schema, rather than the participant's claim
+        text. For entailment and contradiction logits e and c, this call returns
+        exp(e) / (exp(e) + exp(c)). The neutral logit is excluded, so this is not
+        the three-way entailment probability.
 
-        A score close to **1.0** means the passage strongly supports the claim.
-        A score close to **0.0** means the claim is unsupported or contradicted.
-        A claim counts as supported when this score exceeds the per-citation
-        threshold ``tau_citation`` (0.5 by default); admission then requires the
-        fraction of supported claims to be at least ``faithfulness_threshold``
-        (0.80 by default). Both are set in ``card.toml [scoring].params``.
+        The per-citation threshold and aggregate admission threshold are applied
+        by the caller, using the unit's ``card.toml [scoring.params]``. This method
+        does not establish that those thresholds are calibrated.
 
         Parameters
         ----------
         premise : str
             The full text of the cited corpus passage.  Should be the verbatim
-            span resolved from ``citation["span"]`` in the answer JSON.
+            span resolved from the answer's citation offsets.
         hypothesis : str
-            The claim text as written in ``answer["claims"][i]["text"]``.
+            The hypothesis sentence to score against the passage.
 
         Returns
         -------
         float
-            P(entailment) in [0.0, 1.0].
+            The two-way entailment score in [0.0, 1.0].
 
         Raises
         ------
@@ -341,13 +343,12 @@ class DeBERTaNLIJudge:
             )
             return 0.0
 
-        # The CLAIM is the candidate label: with hypothesis_template "{}" the pipeline's
-        # hypothesis is the claim verbatim, so this scores P(entailment | premise, claim).
+        # The hypothesis is the candidate label: hypothesis_template "{}" passes it verbatim.
         # Passing ["entailment", "neutral", "contradiction"] as the labels instead classifies
-        # the premise against those three literal words and never uses the claim at all --
-        # every premise then returns the same score regardless of what was claimed.
-        # multi_label=True yields the independent entailment probability; with a single
-        # candidate label, multi_label=False would softmax it to a constant 1.0.
+        # the premise against those three literal words and never uses this hypothesis.
+        # Keep the retained two-way normalization explicit. The pinned Transformers
+        # single-candidate path also uses it when multi_label=False; that flag does not
+        # turn this into a three-way probability or a constant 1.0.
         result = pipe(
             sequences=premise,
             candidate_labels=[hypothesis],

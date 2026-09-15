@@ -15,6 +15,23 @@ released data file is the `license` field in its `manifest.json`.
   transformers, PyTorch, and others) — each under its own license (BSD / Apache-2.0 / MIT / PSF).
   These are *installed*, not redistributed in this repository.
 
+## Model weights
+
+Track 4's citation-faithfulness judge is an ensemble of two DeBERTa-v3 NLI models, pinned in
+`faithfulness/judge.py` (`NLI_MODEL_IDS`). **The two carry different licenses, and neither weights
+license is the license of the data the model was trained on.** No weights are committed to this
+repository; `faithfulness/judge.py` states they are pre-staged into the evaluation image at
+`/model-cache/`, and redistributing them that way is what these terms govern. Licenses below are
+the model cards' own `license` field, read 2026-09-01.
+
+- **`cross-encoder/nli-deberta-v3-large`** (judge ensemble member 1 of 2) — weights
+  **Apache-2.0**. Trained on SNLI (**CC BY-SA 4.0**) and MultiNLI.
+  Source: https://huggingface.co/cross-encoder/nli-deberta-v3-large
+- **`MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli`** (judge ensemble member 2 of 2) —
+  weights **MIT**. Trained on MultiNLI, FEVER-NLI, ANLI (**CC BY-NC 4.0**, non-commercial),
+  Ling-NLI and WANLI.
+  Source: https://huggingface.co/MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli
+
 ## Datasets & corpora
 
 - **QF-Bench** (Track 1 practice pool) — **CC BY-NC 4.0**. Redistributed here under those terms with
