@@ -341,7 +341,7 @@ and [descriptor guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob
 The default house-endpoint path is `api`. Official BYO supplies one LoRA adapter, rank at most 64,
 for the organizer-hosted Nemotron base; the organizer extracts it and starts the server.
 Participants use the supplied endpoint and model name, and do not start vLLM themselves.
-The older full-weights wording in `SUBMISSION_CLI.md` conflicts with that newer guidance.
+Packaging and serving are now aligned in the [local submission contract](../SUBMISSION_CLI.md#adapter-only-byo).
 A submission using no model declares `models: []` under C5 1.1.0 in toolkit tag `v2.4.0`;
 the documented category remains legacy `byo-small`. Do not invent a placeholder model entry.
 `--local-llama` remains a development experiment only.
