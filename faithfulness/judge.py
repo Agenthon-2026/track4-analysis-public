@@ -162,10 +162,9 @@ except ImportError:
 #:
 #: Both models implement the Laurer et al. (2024) multi-dataset NLI training
 #: regime, training on MNLI, FEVER-NLI, ANLI (R1–R3), Ling-NLI, and WANLI
-#: with DeBERTa-v3-large as the backbone encoder.  Running both models and
-#: averaging their two-way entailment scores reduces variance from individual
-#: model calibration drift and improves reliability on financial text domains
-#: that differ from standard NLI training distributions.
+#: with DeBERTa-v3-large as the backbone encoder. The ensemble averages their
+#: two-way entailment scores; averaging does not establish calibration on
+#: financial text domains.
 NLI_MODEL_IDS: list[str] = [
     "cross-encoder/nli-deberta-v3-large",
     "MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli",
@@ -661,9 +660,10 @@ def score_claim(
     Returns
     -------
     float
-        The judge's support score in [0.0, 1.0]. Values above 0.5 (``tau_citation``) count
-        the claim as supported; the Track 4 admissibility gate then requires at
-        least 80% of claims to be supported (``faithfulness_threshold``).
+        The judge's support score in [0.0, 1.0]. The Track 4 prediction checker
+        applies the unit's thresholds to hypotheses built from roster predictions.
+        Its denominator is the entity roster, not the number of claim strings
+        scored by this utility.
 
     Raises
     ------

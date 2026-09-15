@@ -243,7 +243,7 @@ values into three-way entailment probabilities or establish calibration. Both mo
 from pre-cached weights inside the evaluation Docker image.
 
 The judge passes one hypothesis as the sole candidate label, with `hypothesis_template="{}"`
-and `multi_label=True`. In the pinned Transformers pipeline, `multi_label=False` with one
+and `multi_label=True`. In the linked Transformers 5.15.0 implementation, `multi_label=False` with one
 candidate takes the same entailment-versus-contradiction branch; it does not produce a
 constant 1.0. See the [Transformers implementation](https://github.com/huggingface/transformers/blob/5eddc12edfaf8cafde8c9bae4ccb12f8a139b4f9/src/transformers/pipelines/zero_shot_classification.py#L235-L254)
 and the call in [`faithfulness/judge.py`](../faithfulness/judge.py).
