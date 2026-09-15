@@ -180,7 +180,7 @@ reported, but it is never what the judge is asked about, so describing a cited p
 cannot make a wrong prediction faithful.
 
 Faithfulness is checked automatically by an NLI model. A roster entity's prediction is
-**supported** when the entailment probability of (cited passage, that prediction) exceeds the
+**supported** when the ensemble's two-way entailment score for (cited passage, that prediction) exceeds the
 per-citation threshold of 0.5 (`tau_citation`) for at least one span cited *for that entity*.
 
 **The denominator is the entity roster, not the number of claims you wrote.** One hypothesis is
@@ -199,12 +199,21 @@ predictions were correct.
 **premise** (a passage) and a **hypothesis** (a claim), does the premise **entail** the hypothesis
 (i.e., if the premise is true, must the hypothesis also be true)?
 
-Three possible verdicts:
-- **Entailment**: the premise clearly supports the hypothesis. Score → 1.0.
-- **Neutral**: the premise neither confirms nor denies the hypothesis. Score ≈ 0.3–0.6.
-- **Contradiction**: the premise says the opposite of the hypothesis. Score → 0.0.
+The models distinguish three NLI classes:
 
-In Track 4, the premise is the cited passage and the hypothesis is the agent's claim.
+- **Entailment**: the premise clearly supports the hypothesis.
+- **Neutral**: the premise neither confirms nor denies the hypothesis.
+- **Contradiction**: the premise says the opposite of the hypothesis.
+
+Track 4's retained judge score compares only the entailment and contradiction logits
+(the model's raw class scores): `exp(entailment) / (exp(entailment) + exp(contradiction))`.
+Neutral is excluded from this normalization. A high score therefore favors entailment over
+contradiction but does not establish a low neutral probability; neutral examples have no
+fixed score range under this calculation.
+
+The cited passage is the premise. The prediction checker builds the hypothesis from the
+submitted prediction and trusted task schema, as described under "Faithfulness" above.
+The examples below illustrate the three NLI meanings, rather than measured model scores.
 
 **Tiny example:**
 
@@ -212,13 +221,13 @@ In Track 4, the premise is the cited passage and the hypothesis is the agent's c
 > compared to $20,766 million for the same period in fiscal 2023."
 
 > Hypothesis 1: "Services revenue rose year-over-year in Q1 FY2024."
-> Verdict: **Entailment** — $23,117M > $20,766M. Score ≈ 0.95.
+> Verdict: **Entailment** — $23,117M > $20,766M.
 
 > Hypothesis 2: "Services revenue grew faster than iPhone revenue."
-> Verdict: **Neutral** — the passage says nothing about iPhone revenue. Score ≈ 0.30.
+> Verdict: **Neutral** — the passage says nothing about iPhone revenue.
 
 > Hypothesis 3: "Services revenue declined in Q1 FY2024."
-> Verdict: **Contradiction** — the passage shows growth. Score ≈ 0.02.
+> Verdict: **Contradiction** — the passage shows growth.
 
 ---
 
@@ -229,12 +238,18 @@ Track 4 uses an **ensemble** of two DeBERTa (a type of transformer language mode
 - `MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli`
 
 Both models are trained on large NLI datasets (MNLI, FEVER-NLI, ANLI), following Laurer et al.
-(2024). The ensemble averages their entailment probabilities, reducing the chance that one
-model's calibration quirks affect the final score. Both models run offline (no internet access)
+(2024). The ensemble averages their two-way entailment scores. Averaging does not turn these
+values into three-way entailment probabilities or establish calibration. Both models run offline (no internet access)
 from pre-cached weights inside the evaluation Docker image.
 
+The judge passes one hypothesis as the sole candidate label, with `hypothesis_template="{}"`
+and `multi_label=True`. In the pinned Transformers pipeline, `multi_label=False` with one
+candidate takes the same entailment-versus-contradiction branch; it does not produce a
+constant 1.0. See the [Transformers implementation](https://github.com/huggingface/transformers/blob/5eddc12edfaf8cafde8c9bae4ccb12f8a139b4f9/src/transformers/pipelines/zero_shot_classification.py#L235-L254)
+and the call in [`faithfulness/judge.py`](../faithfulness/judge.py).
+
 The threshold for a single citation to pass is 0.5 (`tau_citation`): the entailment
-probability, averaged across both models, must exceed 0.5. Admission then requires at least
+score, averaged across both models, must exceed 0.5. Admission then requires at least
 80% of the **roster's** predictions to be supported (`faithfulness_threshold` = 0.80) — see
 "Faithfulness" above for why the denominator is the roster and not the claim count.
 
