@@ -135,7 +135,7 @@ except ImportError:
         """Minimal NLI judge protocol compatible with qfbench2_common."""
 
         def entail(self, premise: str, hypothesis: str) -> float:
-            """Return P(entailment) for the given premise/hypothesis pair."""
+            """Return the judge's support score for the premise/hypothesis pair."""
             ...
 
     class EnsembleNLIJudge:  # type: ignore[no-redef]
@@ -145,7 +145,7 @@ except ImportError:
             self._judges = judges
 
         def entail(self, premise: str, hypothesis: str) -> float:
-            """Average entailment probability across all member judges."""
+            """Average the support scores across all member judges."""
             if not self._judges:
                 return 0.0
             return float(
@@ -162,10 +162,9 @@ except ImportError:
 #:
 #: Both models implement the Laurer et al. (2024) multi-dataset NLI training
 #: regime, training on MNLI, FEVER-NLI, ANLI (R1–R3), Ling-NLI, and WANLI
-#: with DeBERTa-v3-large as the backbone encoder.  Running both models and
-#: averaging their entailment probabilities reduces variance from individual
-#: model calibration drift and improves reliability on financial text domains
-#: that differ from standard NLI training distributions.
+#: with DeBERTa-v3-large as the backbone encoder. The ensemble averages their
+#: two-way entailment scores; averaging does not establish calibration on
+#: financial text domains.
 NLI_MODEL_IDS: list[str] = [
     "cross-encoder/nli-deberta-v3-large",
     "MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli",
@@ -204,7 +203,9 @@ class DeBERTaNLIJudge:
     The cited passage is the *premise* (``sequences``) and the hypothesis is the sole
     *candidate label*, with ``hypothesis_template="{}"`` so the pipeline's
     hypothesis is passed verbatim. ``multi_label=True`` requests the two-way
-    entailment-versus-contradiction normalization; neutral is excluded. Passing
+    entailment-versus-contradiction normalization; neutral is excluded. With a
+    single candidate, ``multi_label=False`` takes the same normalization branch.
+    Passing
     ``["entailment", "neutral", "contradiction"]`` as the candidate labels would
     classify the premise against those three literal words and ignore the hypothesis.
 
@@ -399,7 +400,7 @@ class ServedNLIJudge:
     hypothesis) -> float`` protocol, one instance per ensemble member model —
     so an :class:`EnsembleNLIJudge` composed of ``ServedNLIJudge`` instances
     averages client-side exactly as the local ensemble does. The server only
-    ever returns a single model's entailment probability; no scoring logic
+    ever returns a single model's two-way entailment score; no scoring logic
     lives behind the endpoint.
 
     Wire protocol (JSON over HTTP)::
@@ -433,7 +434,7 @@ class ServedNLIJudge:
     max_retries: int = 3
 
     def entail(self, premise: str, hypothesis: str) -> float:
-        """Return P(entailment) from the served model.
+        """Return the served model's two-way entailment score.
 
         Empty premise or hypothesis short-circuits to 0.0 CLIENT-side, exactly
         as :meth:`DeBERTaNLIJudge.entail` does — the two backends must agree on
@@ -574,7 +575,7 @@ def build_ensemble_judge(
     -------
     EnsembleNLIJudge
         An ensemble judge whose :meth:`score` method returns the mean
-        entailment probability across all member models.
+        two-way entailment score across all member models.
 
     Raises
     ------
@@ -595,7 +596,7 @@ def build_ensemble_judge(
         raise ImportError(
             "qfbench2-common is required to build EnsembleNLIJudge. "
             "Install it with: "
-            'pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.3.1#subdirectory=common"'
+            'pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.2#subdirectory=common"'
         )
 
     effective_model_ids: list[str] = (
@@ -636,10 +637,10 @@ def score_claim(
     * The **hypothesis** is *claim_text* — the participant's claim that
       purports to be grounded in that passage.
 
-    A high entailment score (→ 1.0) means the passage genuinely entails the
-    claim: the claim is faithful.  A score at or below the per-citation
-    threshold ``tau_citation`` (0.5 by default) means the claim overstates or
-    misrepresents the passage.
+    With the DeBERTa ensemble, a high score means the models favor entailment
+    over contradiction. The neutral logit is excluded from each member's
+    normalization, so a high value alone does not establish that the claim
+    follows from the passage.
 
     Parameters
     ----------
@@ -659,9 +660,10 @@ def score_claim(
     Returns
     -------
     float
-        P(entailment) in [0.0, 1.0].  Values above 0.5 (``tau_citation``) count
-        the claim as supported; the Track 4 admissibility gate then requires at
-        least 80% of claims to be supported (``faithfulness_threshold``).
+        The judge's support score in [0.0, 1.0]. The Track 4 prediction checker
+        applies the unit's thresholds to hypotheses built from roster predictions.
+        Its denominator is the entity roster, not the number of claim strings
+        scored by this utility.
 
     Raises
     ------
@@ -957,7 +959,7 @@ if __name__ == "__main__":
             "WARNING: qfbench2-common is not installed. "
             "Cannot build EnsembleNLIJudge. "
             "Install with: "
-            'pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.3.1#subdirectory=common"',
+            'pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.2#subdirectory=common"',
             file=sys.stderr,
         )
     elif not _TRANSFORMERS_AVAILABLE:

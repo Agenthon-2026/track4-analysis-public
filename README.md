@@ -164,18 +164,36 @@ computed at all. Verified by running the scorer on each case.
 | Timeout | 10 minutes per unit, set authoritatively in `card.toml [agent].timeout_sec = 600.0` — exceeding this budget causes a g2 timeout failure |
 | Image size | Recommended ≤ 15 GB; over 20 GB may be rejected |
 
+The image-size row remains the published recommendation and rejection policy; it is not a
+verified automatically enforced image-size quota. The image-layer limit is a different resource.
+See the [image submission guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.4.2/docs/IMAGE-SUBMISSIONS.md)
+for anonymous public pulls and organizer-confirmed private mirrors.
+
+For CPU, memory and GPU settings, read the unit card and the
+[Development runtime guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.4.2/docs/DEVELOPMENT-RUNTIME.md).
+The `api` category does not remove a card's GPU grant for permitted local code or authorize
+an additional model server. The unit clock includes container creation and any required pull;
+the ingestion stage has a separate 12-hour clock across sequential units, and scoring has its
+own stage clock. The planned House timing release activates each unit once when the organizer begins that unit's execution setup. Queue waiting and earlier units do not spend that unit's own
+window; setup/provisioning and container creation/execution after activation can. Its fixed end
+is capped by the card/fallback unit ceiling and the remaining actual ingestion-stage time.
+Restarting or retrying under the same allocation resets neither the window nor request counters.
+Deployment and verification remain required before opening; no compute allowance grows. These
+Development settings do not certify Final resources or announce participant access.
+
 **Why restricted, not open.** The corpus is frozen. The embargo rule forbids fetching documents
 or data published after `cutoff_date`. Open internet access at inference time would make the
 embargo unenforceable — so the only permitted egress is model-API traffic through the audited
-proxy, where every connection is logged and becomes the audit artifact for the verification
-phase. Vendor-side tools (web search, code execution, retrieval) **must be disabled** in API
+proxy, where every connection is logged and becomes the audit artifact for verification within the joint Final + Verification phase. Vendor-side tools (web search, code execution, retrieval) **must be disabled** in API
 calls; this is enforced by rule and audit. Data/text cutoffs are unchanged and still enforced by
 the harness (`g2`).
+
+**Development availability.** The initial Development opening is planned for House/API submissions. BYO adapter serving is planned for a later opening, with a separate availability announcement. The published BYO adapter eligibility and descriptor categories remain valid. This page is not an opening announcement.
 
 **Two modes, one contract.**
 
 1. **API mode** (`category = "api"`): your agent calls the organizer-hosted model endpoint
-   (`$MODEL_ENDPOINT`); your contribution is the prompts, harness, system prompts, and agents.
+   (`$MODEL_ENDPOINT`); your contribution is the prompts, harness, system prompts, agents and permitted local numerical artifacts.
    No participant API keys are injected and none exist (policy 2026-08-04) — the house endpoint
    is the only reachable model.
 2. **BYO mode** (`category = "byo-large"` or `"byo-small"`, retained as legacy names): ship
@@ -190,6 +208,8 @@ At scoring time the container sees: `HTTP_PROXY`/`HTTPS_PROXY` pointing at the a
 without the eval network fall back to `--network=none`, so your agent must degrade gracefully
 (still emit a schema-valid `answer.json`) when model APIs are unreachable.
 
+**Local numerical artifacts.** The [Track 4 artifact policy](docs/ARTIFACT-POLICY.md) defines permitted non-neural models, calibration parameters and corpus-only retrieval assets, with disclosure and cutoff requirements. It does not authorize additional neural checkpoints or establish BYO service availability.
+
 **Offline training.** The [Track 4 training policy](docs/TRAINING-POLICY.md) permits eligible
 external training data within the existing artifact categories, requires cutoff-aware fitting,
 selection and calibration, and defines the narrow exception for approved Nemotron base
@@ -201,8 +221,8 @@ supports it. API-based entries are verified statistically (bootstrap-CI overlap 
 entries bit-reproducibly.
 
 **House API allocation.** See the [model-API rules](SUBMISSION_CLI.md#rules-for-model-api-use-restricted-mode)
-for the selected House allowance and pending input/failure/retry details. These House limits
-do not define a BYO request limit. Platform availability and deployed enforcement will be
+for the allowance of 1,000,000 input tokens per unit, selected House request limits, and
+accounting for failed or retried requests. These House limits do not define a BYO request limit. Platform availability and deployed enforcement will be
 announced separately.
 
 **Leaderboard.** One board; every entry is tagged with its category, models used (pinned
@@ -235,11 +255,9 @@ a ceiling rather than a floor (`nemoguardrails` and `nvidia-nat` both pin `<3.14
 Track 4 inherits scoring utilities from the shared toolkit repository. Install them with:
 
 ```bash
-# Pin the tag, and pin this one: v2.3.1 rejects a descriptor the evaluation verifier accepts
-# (it requires at least one `models` entry; the current contract allows `"models": []`).
-# `pip show qfbench2-common` reports 2.3.1 from this tag -- the metadata lags the tag. That is
-# cosmetic and expected; the code is the v2.4.0 code.
-pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.0#subdirectory=common"
+# Pin toolkit v2.4.2 for the current submission commands and model-free fixture.
+# The installed package reports version 2.4.2.
+pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.2#subdirectory=common"
 ```
 
 > **Pin a tag, never a branch.** Installing from a moving ref means your local result and your
@@ -397,7 +415,7 @@ non-rankable; it checks the interface, not prediction accuracy or production fai
 # baselines/requirements.txt is comments only -- the minimal baseline is standard library
 # by design -- so this line installs nothing. It is here because step 4 and step 5 need the
 # shared toolkit, which brings jsonschema with it.
-pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.0#subdirectory=common"
+pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.2#subdirectory=common"
 
 # 2. Run the RAG baseline
 python baselines/baseline_agent.py \
@@ -462,3 +480,15 @@ mount. Vendor-side tools (web search, code execution, retrieval) must be disable
 BYO model submissions follow the [adapter-only contract](SUBMISSION_CLI.md#adapter-only-byo).
 Test locally with `docker run --network=none` before submitting to confirm your agent has no
 open-internet dependency and degrades gracefully when model APIs are unreachable.
+
+## Competition schedule and submission limits
+
+Development runs through **October 12, 2026**. The joint **Final + Verification phase runs
+October 13–25, 2026**. Each team makes **one final submission per track**; organizers perform
+verification within that same phase, with no separate participant Verification submission.
+Registration and Development close together on October 12, 2026 at **23:59 Anywhere on Earth (AoE, UTC−12)**. The joint Final + Verification phase closes on October 25, 2026 at **23:59 AoE**. Other competition dates and task/data cutoffs are unchanged.
+
+At the participant Development opening, Track 4 allows **5 uploads per team per day**
+and **20 total uploads per team for this track during Development**. Use your team's single
+designated CodaBench account. Local validation and packaging use no attempts; held or cancelled
+uploads still count. See [submission limits](SUBMISSION_CLI.md#development-submission-limits).
