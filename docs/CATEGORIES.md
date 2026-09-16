@@ -27,9 +27,10 @@ answer schema, the gates and the composite are identical everywhere. If a term h
   of target type.
 - **Citations on every row**, into documents the unit's `manifest.json` declares, all dated on or
   before `cutoff_date`.
-- **The corpus is the whole permitted world.** Every published prompt says "Using ONLY the frozen
-  evidence corpus". There is no open internet at scoring time, and post-cutoff documents are
-  refused whether you find them in the corpus or bring them yourself.
+- **Evaluation uses the supplied task and frozen corpus.** Every published prompt says "Using ONLY
+  the frozen evidence corpus". There is no open internet at scoring time, and post-cutoff
+  citations are refused. The separate [training policy](TRAINING-POLICY.md) governs eligible
+  offline training; it does not authorize additional evaluation inputs or citations.
 
 ## The families published here
 

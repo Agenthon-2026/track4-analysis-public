@@ -70,9 +70,10 @@ composite score: ineligible.
 1. Uses the `corpus_ref` pointer from the entity row to retrieve relevant passages from the
    frozen corpus using hybrid BM25 + dense retrieval (BAAI/bge-m3 or equivalent).
 2. Passes the top-K retrieved passages plus the entity's tabular features to an LLM with a
-   structured prompt. Official inference uses the organizer-hosted `$MODEL_ENDPOINT`
-   (OpenAI-compatible), with `$MODEL_NAME` supplied by the harness. BYO adapters are also served
-   by the organizer; see the submission-category note below.
+   structured prompt. In official scoring, the reader calls the organizer-hosted
+   `$MODEL_ENDPOINT` with the supplied `$MODEL_NAME`. BYO means one LoRA adapter on the
+   organizer's base, not a bundled reader checkpoint or a model server. Vendor model APIs
+   are not permitted. See [adapter-only BYO](../SUBMISSION_CLI.md#adapter-only-byo).
 3. Generates a prediction (label or numeric estimate), a claim sentence, and a citation for each
    material statement.
 4. A **calibration head** (a small quantile regression model) converts the LLM's raw confidence
@@ -215,19 +216,31 @@ filter is not the same as being eligible.
 
 ---
 
-## Models and deployment
+## Open-weights references for offline experiments
+
+The model list below supports offline experiments and local checks. The reader alternatives
+are not models you may bundle for official BYO scoring; that path follows the
+[adapter-only contract](../SUBMISSION_CLI.md#adapter-only-byo).
 
 | Role | Model | Licence | Notes |
 |------|-------|---------|-------|
 | Retrieval encoder | `BAAI/bge-m3` | MIT | 1.5 B params; supports dense, sparse, and multi-vector retrieval |
-| Reader / Reasoner | Harness-provided `MODEL_NAME` | Organizer model disclosure | Access through the house endpoint; BYO uses an organizer-hosted adapter |
-| NLI judge (local) | `cross-encoder/nli-deberta-v3-large` | MIT | Use before submission to estimate faithfulness score offline |
+| Reader / Reasoner | `mistralai/Mistral-7B-Instruct-v0.3` | Apache 2.0 | Strong instruction following; fits in 8 GB VRAM at 4-bit |
+| Reader (alt) | `meta-llama/Meta-Llama-3-8B-Instruct` | Llama 3 Community | Slightly better on financial reasoning; requires licence acceptance |
+| NLI judge (local, 1 of 2) | `cross-encoder/nli-deberta-v3-large` | Apache-2.0 (weights) | Ensemble member. Use before submission to estimate faithfulness score offline |
+| NLI judge (local, 2 of 2) | `MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli` | MIT (weights) | Ensemble member. The scorer averages both; running only one does not reproduce it |
 | Tabular (text-blind) | `TabPFN` | MIT | Best for small cross-sections (< 1000 rows); classification only |
 
-The optional retrieval and tabular models above are development references, not bundled
-components. Check current organizer rules and licenses before adding them. No HuggingFace Hub
-downloads are possible at scoring time. Disclose every model used, its revision and training
-cutoff in submission metadata; reader deployment follows the category note below.
+The two judge models carry **different** weights licences, and the licence on the data they were
+trained on differs again from the licence on the weights — one of the two training sets is
+non-commercial. `THIRD-PARTY-NOTICES.md` names both, per model. Do not treat the ensemble as
+uniformly MIT.
+
+Cache the weights needed for offline experiments and local judge checks before running them.
+Official scoring cannot fetch HuggingFace Hub weights: those domains are outside the restricted
+network allowlist, and `TRANSFORMERS_OFFLINE=1` is set in the scoring environment. The official
+reader uses the organizer endpoint. Declare pinned model and adapter versions and their training
+cutoffs as required by [the submission contract](../SUBMISSION_CLI.md#rules-for-model-api-use-restricted-mode).
 
 ---
 
@@ -328,7 +341,7 @@ and [descriptor guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob
 The default house-endpoint path is `api`. Official BYO supplies one LoRA adapter, rank at most 64,
 for the organizer-hosted Nemotron base; the organizer extracts it and starts the server.
 Participants use the supplied endpoint and model name, and do not start vLLM themselves.
-The older full-weights wording in `SUBMISSION_CLI.md` conflicts with that newer guidance.
+Packaging and serving are now aligned in the [local submission contract](../SUBMISSION_CLI.md#adapter-only-byo).
 A submission using no model declares `models: []` under C5 1.1.0 in toolkit tag `v2.4.0`;
 the documented category remains legacy `byo-small`. Do not invent a placeholder model entry.
 `--local-llama` remains a development experiment only.

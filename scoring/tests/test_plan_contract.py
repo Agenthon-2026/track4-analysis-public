@@ -37,10 +37,16 @@ from qfbench2_common.contracts import (
 )
 from qfbench2_common.contracts.fixtures import DEV_KEY_ID, DEV_SEED, load_fixture
 
-from qfbench2_track_analysis.alignment import TARGET_TYPES
-from qfbench2_track_analysis.codes import T4OrganizerFault
+from qfbench2_track_analysis.alignment import TARGET_TYPES, align_predictions
+from qfbench2_track_analysis.codes import (
+    T4OrganizerFault,
+    T4ParticipantFailure,
+    T4Reason,
+)
 from qfbench2_track_analysis.plan_adapter import (
     WEIGHT_KEYS,
+    entity_roster_from_entry,
+    labels_from_entry,
     scoring_params_from_entry,
     trusted_inputs_for,
 )
@@ -50,6 +56,8 @@ from qfbench2_track_analysis.scoring import (
     ScoringParams,
     clip_to_domain,
 )
+
+from .synthetic import answer_for  # noqa: E402
 
 FIXTURE = "c1/analysis_final.expanded.json"
 
@@ -222,3 +230,70 @@ def test_a_public_commitment_cannot_be_scored_against() -> None:
     assert plan.is_public_commitment is True
     with pytest.raises(Exception):
         trusted_inputs_for(plan, "u-644dc0d6eda4da5f")
+
+
+# ------------------------------------------------- C1 1.3.0: the plan entry carries the vocabulary
+#
+# `Agenthon2026#123` / private #89 F1. `align_predictions` refuses a label outside
+# `roster.labels`; the local path fills that field from task.json, the platform path built the
+# roster from the plan entry, and the entry carried no vocabulary -- so four of the ten deployed
+# Development units were LABEL_INVALID locally and admissible on the platform. The entry now
+# carries `scoring_params.labels` and the adapter hands it to the roster.
+
+
+def test_a_classification_entry_carries_its_labels_into_the_platform_roster() -> None:
+    entry = _entry(target_type="classification", labels=["beat", "miss", "inline"])
+    assert labels_from_entry(entry) == ("beat", "miss", "inline")
+    assert entity_roster_from_entry(entry).labels == ("beat", "miss", "inline")
+
+
+def test_the_platform_path_now_refuses_a_label_outside_the_vocabulary() -> None:
+    """The verdict the local path always gave, reproduced from the signed entry alone."""
+    entry = _entry(target_type="classification", labels=["up", "down"])
+    roster = entity_roster_from_entry(entry)
+    answer = answer_for(roster.entity_ids, label="sideways")
+    with pytest.raises(T4ParticipantFailure) as caught:
+        align_predictions(
+            answer, roster, target_type="classification", interval_level=0.9
+        )
+    assert caught.value.reason is T4Reason.LABEL_INVALID
+
+
+def test_a_label_inside_the_vocabulary_aligns() -> None:
+    """POSITIVE CONTROL: the vocabulary refuses outsiders, not members."""
+    entry = _entry(target_type="classification", labels=["up", "down"])
+    roster = entity_roster_from_entry(entry)
+    answer = answer_for(roster.entity_ids, label="down")
+    aligned = align_predictions(
+        answer, roster, target_type="classification", interval_level=0.9
+    )
+    assert set(aligned.pred_labels) == {"down"}
+
+
+def test_an_entry_without_labels_keeps_the_pre_1_3_0_behaviour() -> None:
+    """A 1.2.0 plan: no vocabulary, no check -- the ambiguity is the document's, and the hub
+    parser removes it for 1.3.0 documents. Recorded so the skip is a known state, not a surprise."""
+    entry = _entry(target_type="classification")
+    assert entry.scoring_params is not None and "labels" not in entry.scoring_params
+    assert entity_roster_from_entry(entry).labels is None
+
+
+@pytest.mark.parametrize("target", ["regression", "ranking"])
+def test_labels_on_a_unit_that_has_no_labels_are_an_organizer_fault(
+    target: str,
+) -> None:
+    entry = _entry(target_type=target, labels=["up", "down"])
+    with pytest.raises(T4OrganizerFault, match="only classification units"):
+        labels_from_entry(entry)
+
+
+@pytest.mark.parametrize(
+    "labels",
+    [["up"], [], ["up", "up"], ["up", ""], ["up", " down"], ["up", 3], "up,down", None],
+)
+def test_a_malformed_vocabulary_on_a_signed_entry_is_an_organizer_fault(
+    labels: object,
+) -> None:
+    entry = _entry(target_type="classification", labels=labels)
+    with pytest.raises(T4OrganizerFault, match="two or more unique"):
+        labels_from_entry(entry)

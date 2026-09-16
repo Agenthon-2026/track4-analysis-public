@@ -49,8 +49,9 @@ internet** in official scoring.
 > Your two supported options are therefore:
 >
 > 1. **House endpoint** — call `MODEL_ENDPOINT` with `MODEL_NAME`. Free, metered per run.
-> 2. **Bring your own weights** — vendor them in the image (`byo-large` / `byo-small`) and run
->    them locally. Nothing is fetched at run time.
+> 2. **Bring your own adapter** — ship one LoRA adapter, rank ≤ 64, for the organizer-served
+>    base. Call the same endpoint with your supplied adapter model id. See
+>    [adapter-only BYO](#adapter-only-byo); do not bundle full model weights or run a model server.
 >
 > **No participant API keys exist.** The harness injects none and there is no mechanism for a
 > submission to supply one, so a vendor key would have nothing to reach even if you had one.
@@ -63,11 +64,34 @@ in both modes — network access is for **model calls only**, never for fetching
 Track 3 (simulation) sits outside these categories: submissions are simulators and the network
 stays `none`. For the agent tracks, every submission declares one category in `submission.json`:
 
-| Category | What you bundle | Model access | Compute tier |
-|---|---|---|---|
-| `api` | prompts / harness / system-prompts / agents (your contribution is the scaffolding) | the **house endpoint only**, via the proxy | CPU |
-| `byo-large` | your own **large** model weights in-image | local weights; may **also** call the house endpoint | GPU, 80GB-class |
-| `byo-small` | your own **small** model weights (≤ ~8B) in-image | local weights; may **also** call the house endpoint | CPU or small GPU |
+| Category | What you bundle | Model access |
+|---|---|---|
+| `api` | prompts / harness / system-prompts / agents (your contribution is the scaffolding) | the **house endpoint only**, via the proxy |
+| `byo-large` / `byo-small` | one LoRA adapter plus your agent code | the house endpoint serving the organizer's base with your adapter loaded |
+
+The `byo-*` descriptor values are legacy names, not separate small- and large-weights tiers.
+The unit card remains the authority for your container's resource limits.
+The adapter requirement applies to BYO model submissions; the shipped model-free baseline does
+not need an adapter.
+
+Offline training and the narrow approved-base cutoff exception are defined in the
+[Track 4 training policy](docs/TRAINING-POLICY.md). They do not expand these categories.
+
+### Adapter-only BYO
+
+A LoRA (low-rank adaptation) adapter contains parameter updates for the organizer's base model.
+Package exactly one `adapter_model.safetensors` and `adapter_config.json` pair together in your
+image. Use LoRA rank ≤ 64 and declare `target_modules` accurately. Full fine-tuning and shipping
+full model weights are not permitted. The directory for extraction is supplied with submission
+instructions; keep the pair in one relocatable directory rather than guessing a required path.
+
+The BYO contract assigns serving to the organizer: static extraction runs none of your code;
+the organizer starts the base with your adapter loaded and tears the server and extracted adapter
+down when the submission finishes. Your submission must not run a model server. Its client uses
+the supplied `MODEL_ENDPOINT` and `MODEL_NAME`; for BYO, `MODEL_NAME` identifies your adapter.
+These are the packaging and serving requirements, not a statement that a particular endpoint
+is currently available. See the [published BYO guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/09873cad2f3ea1171acd4e19cd8c10b3cb6a126f/starter-packs/track4/AGENTS.md#L401)
+for local adapter preparation.
 
 ### Container environment contract (`restricted` mode, set by the harness)
 
@@ -76,25 +100,26 @@ stays `none`. For the agent tracks, every submission declares one category in `s
 | `HTTP_PROXY` / `HTTPS_PROXY` | the audited egress proxy. **Read these from the environment; never hardcode a proxy host** — the address is an operational detail and it has changed. Most HTTP clients honour them automatically |
 | `NO_PROXY` | hosts that must bypass the proxy |
 | `MODEL_ENDPOINT` | the organizer-hosted OpenAI-compatible endpoint. This is the **only** model API you can reach |
-| `MODEL_NAME` | the pinned house-model id served at `MODEL_ENDPOINT` (use it in your client calls; published with the model pin) |
+| `MODEL_NAME` | the organizer-supplied model id for this run: the house model for `api`, or your adapter for BYO. Use it unchanged in client calls |
 | `QFBENCH_NETWORK` | `restricted` (or `none` for simulation / local fallback) |
 
 ### Rules for model-API use (`restricted` mode)
 
 1. **Vendor-side tools OFF.** Web search, code execution, retrieval, and any other vendor-side
    tool MUST be disabled in every API call. Enforced by rule + audit of the proxy logs.
-2. **Pin model versions.** The house endpoint serves a pinned model id (`MODEL_NAME`); for
-   bundled weights, pin the exact revision. Floating aliases (`*-latest`) are not reproducible
+2. **Pin model versions.** The house endpoint serves the organizer's pinned base; for a BYO
+   adapter, pin its exact revision too. Floating aliases (`*-latest`) are not reproducible
    and are rejected at verification.
-3. **Disclose training cutoffs.** The training cutoff of every model used (API or bundled) MUST
+3. **Disclose training cutoffs.** The training cutoff of every model used, including BYO adapters, MUST
    be declared in submission metadata (`models[].training_cutoff` in `submission.json`).
 4. **Pin temperature/seed** where the API supports it. `api`-category entries are verified
-   *statistically* (bootstrap-CI overlap on organizer rerun); BYO entries bit-reproducibly.
-5. **Budget (PROVISIONAL — not final).** A uniform per-unit budget applies to every submission —
-   provisional figure: **1,000,000 input + 100,000 output tokens per unit** — enforced via proxy
-   logs and spot audit. It applies to house-endpoint calls; locally-run bundled weights are bounded
-   by the card's wall clock and resource caps instead. The figure has not been finalised; treat it
-   as a planning number, and expect the final one to be announced before any scored run.
+   *statistically* (bootstrap-CI overlap on organizer rerun for T2/T3/T4; for T1, the single-pass
+   per-unit verdicts must agree exactly); BYO entries bit-reproducibly.
+5. **House API allocation.** The selected allowance is **25 requests per unit**, with
+   **at most 4,000 output tokens per call**. Input limits and accounting for failed or retried
+   requests are not yet finalized. This House allocation does not define a BYO request limit;
+   the adapter and resource requirements above remain unchanged. Platform availability and
+   deployed enforcement will be announced separately.
 
 **One leaderboard.** All categories rank on a single board; every entry is tagged with its
 category, the models used (pinned versions), and their training cutoffs.
@@ -176,7 +201,9 @@ everything else to `simulate`. Six of the public dev units (`t3-gbatch-*`) are b
 
 ## Open Division tag
 
-Submissions whose every model call uses the house endpoint exclusively may set
-`house_endpoint_only: true` in `submission.json`. This drives an "Open Division" display
-filter of the single leaderboard (never a separate ranking) and is verified against the
-audited egress-proxy logs during the verification phase.
+Do **not** add `house_endpoint_only` -- or any key the descriptor schema does not list -- to
+`submission.json`: the schema refuses unknown keys, so a submission carrying it is rejected
+before it runs. Whether every model call used the house endpoint exclusively is read from
+the audited egress-proxy logs during the verification phase; it drives an "Open Division"
+display filter of the single leaderboard (never a separate ranking) and needs nothing
+from you.

@@ -117,7 +117,7 @@ jobs:
           pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.0#subdirectory=common"
       # `python -m pytest` for the same sys.path reason as the firewall job above.
       - name: Scorer + judge tests
-        run: python -m pytest scoring/tests faithfulness/tests baselines/evaluation/tests -q
+        run: python -m pytest scoring/tests faithfulness/tests baselines/evaluation/tests tests -q
 
   # The toolkit-backed half: manifest checksums and the public-safety firewall live in the
   # shared package. Kept separate from the stdlib-only `firewall` job above so that a broken or

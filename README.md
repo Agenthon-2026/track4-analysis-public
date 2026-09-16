@@ -139,20 +139,17 @@ inverts the ordering against a metric where larger is better, and scores
 themselves. Omitting `point_forecast` on a ranking unit is refused outright. In every case there is one entry in
 `entity_predictions` per entity row.
 
-Required fields for all task types:
-- `task_id`: copied from `task.json`; `schema_version`; and `target_type` — set it to the unit's
-  card value (`SUBMISSION_CLI.md` invariant 7). A `target_type` that disagrees with the card is
-  `t4.target_type_mismatch`, a whole-submission `SCHEMA_INVALID_OUTPUT` at `W = -0.27`; omitting
-  the field is accepted and scored, so never copy a literal one out of an example.
-- `entity_predictions`: one object per entity row, each with:
-  - `entity_id`, and `label` (classification) **or** `point_forecast` (regression **and** ranking);
-  - `interval`: the 90% confidence range `{"level": 0.90, "lo": …, "hi": …}` (`level` is pinned);
-  - `claims`: one or more citations, each with `doc_id`, `span_start`, `span_end`, `claim`.
-- `evidence_trace`: a human-readable summary of the retrieval and reasoning process.
+Use the executable `analysis.schema.json` bundled with `qfbench2-common` for required fields
+and the [answer template](templates/answer.example.json) for an example. The schema-validation
+command under **Quick start** reads that installed schema directly. The optional fields
+`schema_version`, `target_type` and `evidence_trace` are not required merely because this README's
+example includes them. If supplied, `target_type` must match the unit's declared target type;
+a mismatch fails the whole unit. The scorer also requires exactly the task's entity roster and
+the prediction appropriate to its target type, as described above.
 
 **These are not partial-credit penalties.** A missing `interval.lo` or `interval.hi`, an empty or
 absent `claims` array, or an `interval.level` other than the card's — on *any* single entity row —
-fails `g1_schema` for the **whole submission**: the unit is scored `t4.schema_invalid`
+fails `g1_schema` for the **whole unit**: the unit is scored `t4.schema_invalid`
 (`SCHEMA_INVALID_OUTPUT`) at the worst-case `W = -0.27`, and no coverage or faithfulness number is
 computed at all. Verified by running the scorer on each case.
 
@@ -181,12 +178,11 @@ the harness (`g2`).
    (`$MODEL_ENDPOINT`); your contribution is the prompts, harness, system prompts, and agents.
    No participant API keys are injected and none exist (policy 2026-08-04) — the house endpoint
    is the only reachable model.
-2. **BYO mode**: the organizer's
-   [starter-pack contract](https://github.com/Agenthon-2026/Agenthon2026-public/blob/main/starter-packs/track4/AGENTS.md#bringing-your-own-model-adapter-only-rank--64)
-   specifies one LoRA adapter with rank at most 64 on the organizer-hosted Nemotron base.
-   The organizer extracts the adapter and starts its server; your code calls the supplied
-   endpoint and model name. Do not ship full reader weights or start a participant model server.
-   This differs from the older full-weights description in `SUBMISSION_CLI.md`.
+2. **BYO mode** (`category = "byo-large"` or `"byo-small"`, retained as legacy names): ship
+   one LoRA adapter, rank ≤ 64, for the organizer-served base model. Full model weights,
+   full fine-tuning, and a submission-run model server are not permitted. Your code calls the
+   supplied `MODEL_ENDPOINT` with `MODEL_NAME`, which names your adapter for that run.
+   See [adapter-only BYO](SUBMISSION_CLI.md#adapter-only-byo) for packaging and serving rules.
 
 The [descriptor guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/main/starter-packs/track4/SUBMISSION-DESCRIPTOR.md)
 also permits a model-free deterministic declaration using legacy `byo-small` and `models: []`
@@ -199,14 +195,20 @@ naming the served model when available, and `QFBENCH_NETWORK=restricted`. Local 
 without the eval network fall back to `--network=none`, so your agent must degrade gracefully
 (still emit a schema-valid `answer.json`) when model APIs are unreachable.
 
+**Offline training.** The [Track 4 training policy](docs/TRAINING-POLICY.md) permits eligible
+external training data within the existing artifact categories, requires cutoff-aware fitting,
+selection and calibration, and defines the narrow exception for approved Nemotron base
+pretraining. Evaluation inputs and citations stay within the official task and frozen corpus.
+
 **Reproducibility.** Model versions must be pinned (dated snapshots), the training cutoff of
 every model must be disclosed in submission metadata, and temperature/seed pinned where the API
 supports it. API-based entries are verified statistically (bootstrap-CI overlap on rerun); BYO
 entries bit-reproducibly.
 
-**Budget.** The organizer's [current CLI contract](https://github.com/Agenthon-2026/track4-analysis-public/blob/main/SUBMISSION_CLI.md#rules-for-model-api-use-restricted-mode)
-records the final per-unit model-API allowance, ruled on 2026-08-28. Read that contract when
-setting token limits; the older provisional wording in a local checkout is stale.
+**House API allocation.** See the [model-API rules](SUBMISSION_CLI.md#rules-for-model-api-use-restricted-mode)
+for the selected House allowance and pending input/failure/retry details. These House limits
+do not define a BYO request limit. Platform availability and deployed enforcement will be
+announced separately.
 
 **Leaderboard.** One board; every entry is tagged with its category, models used (pinned
 versions), and training cutoffs.
@@ -238,6 +240,10 @@ a ceiling rather than a floor (`nemoguardrails` and `nvidia-nat` both pin `<3.14
 Track 4 inherits scoring utilities from the shared toolkit repository. Install them with:
 
 ```bash
+# Pin the tag, and pin this one: v2.3.1 rejects a descriptor the evaluation verifier accepts
+# (it requires at least one `models` entry; the current contract allows `"models": []`).
+# `pip show qfbench2-common` reports 2.3.1 from this tag -- the metadata lags the tag. That is
+# cosmetic and expected; the code is the v2.4.0 code.
 pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.0#subdirectory=common"
 ```
 
@@ -303,6 +309,15 @@ against the per-citation NLI threshold of 0.5 (`tau_citation` in `card.toml`): a
 prediction is supported if some cited span entails it above 0.5. The admission gate then requires
 that at least 80% of the roster's predictions are supported (`faithfulness_threshold = 0.80`).
 
+**The current NLI quantity is two-way.** Each member uses the entailment-versus-contradiction
+normalization returned by the single-candidate call in
+[`DeBERTaNLIJudge.entail`](faithfulness/judge.py), then the ensemble averages those values.
+Neutral is omitted from that normalization; this is not a three-way probability or proof that
+the passage is non-neutral. The hypothesis comes from the submitted prediction, as described
+above. This release preserves that quantity and the existing scoring formula. A later scoring
+change requires a versioned release; this clarification does not establish a completed
+calibration or runtime-equivalence result.
+
 ---
 
 ## The tabular prediction baselines
@@ -362,9 +377,12 @@ the task's target type -- declared as `target.type` in `task.json`, and mirrored
 - **ranking**: Spearman rank correlation **rescaled to [0, 1]** as `(rho + 1) / 2`. A perfect
   ordering scores 1.0, a random one about 0.5, a perfectly reversed one 0.0.
 
-In all three, a missing or NaN prediction is scored worst-case for that row rather than dropped, so
-answering only the rows you are confident about cannot raise your quality
-(`qfbench2_common.scoring.faithfulness.predictive_quality`).
+On every target type, a missing entity or required prediction, or a nonfinite supplied numeric
+value, fails validation for the whole unit before predictive quality is computed. The unit
+receives the committed worst-case value; there is no per-row partial-credit replacement and
+no row is dropped to shrink a denominator. See
+[`align_predictions`](qfbench2_track_analysis/alignment.py) and
+[`score_unit`](qfbench2_track_analysis/scoring.py).
 
 `interval_coverage` is the empirical 90% coverage across the question set (fraction of rows
 where the true value falls inside `[lo, hi]`). A unit whose resolved outcome has **no numeric
@@ -374,11 +392,11 @@ calibration leg: the coverage term is dropped and `composite = w_acc × predicti
 quantity, put that numeric — in the prompt's units — in `point_forecast` / `interval`; an
 interval on a probability never covers a dollar `y`.
 
-Inadmissible units, including failed faithfulness or embargo checks, receive `W = -0.27` and stay
-in the aggregate denominator, as confirmed by the
-[organizer's correction](https://github.com/Agenthon-2026/track4-analysis-public/issues/1#issuecomment-5534948217).
-The `score = None` returned by public smoke means no resolved outcome was available; it is not
-the treatment of an inadmissible unit in a scored run.
+Participant failures, including failed faithfulness or embargo checks, receive the committed
+worst-case unit score `W = -0.27` and remain in the evaluation denominator. This differs from
+an organizer fault, which aborts scoring instead of assigning a participant score. A local
+smoke check without resolved outcomes also returns no numerical score and is explicitly
+non-rankable; it checks the interface, not prediction accuracy or production faithfulness.
 
 ---
 
@@ -448,8 +466,9 @@ baseline emits a fixed-band interval, which is a floor to beat, not a starting p
 
 **Firewall.** Your agent runs on a restricted network: no open internet, egress only through the
 organizer's audited proxy to the organizer-hosted `$MODEL_ENDPOINT` and nothing else —
-vendor model APIs are refused. Dependencies, retrieval indices,
-and permitted resources must be baked into the Docker image or available from the read-only corpus
+vendor model APIs are refused. Retrieval indices, dependencies, and other permitted resources
+must be baked into the Docker image or available from the read-only corpus
 mount. Vendor-side tools (web search, code execution, retrieval) must be disabled in API calls.
+BYO model submissions follow the [adapter-only contract](SUBMISSION_CLI.md#adapter-only-byo).
 Test locally with `docker run --network=none` before submitting to confirm your agent has no
 open-internet dependency and degrades gracefully when model APIs are unreachable.

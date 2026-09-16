@@ -38,11 +38,49 @@ __all__ = [
     "AlignedPredictions",
     "EntityRoster",
     "align_predictions",
+    "validated_label_vocabulary",
 ]
 
 #: Closed. An unknown target type is refused rather than defaulting to classification — the old
 #: fallback meant a card typo silently changed which metric the leaderboard reported.
 TARGET_TYPES: tuple[str, ...] = ("classification", "regression", "ranking")
+
+
+def validated_label_vocabulary(
+    raw: object, target_type: object, *, source: str
+) -> tuple[str, ...]:
+    """The one rule for what a label vocabulary is, for both roster sources.
+
+    `EntityRoster.labels` is built from `task.json` on the local path and from the signed C1 entry
+    on the platform path. Those two used to disagree: the plan side refused a one-label, duplicate,
+    padded or wrongly-typed vocabulary, and the task side accepted all four and fell through to
+    ``labels = None`` — which SKIPS the label check — whenever it could not read one at all. A
+    submission could therefore be refused locally and scored on the platform, or the reverse.
+
+    Both sources are organizer material, so a malformed vocabulary is an organizer fault on either.
+    Stating the rule once is what stops the two drifting apart again; `scoring/tests/
+    test_label_vocabulary_symmetry.py` hands the same vocabulary to both and asserts one verdict.
+
+    The rule: a vocabulary belongs only to a ``classification`` unit, and it is two or more unique,
+    non-empty, unpadded strings. Absence is not malformation — a regression or ranking unit carries
+    no vocabulary by design, and neither caller reaches this function for one.
+    """
+    if target_type != "classification":
+        raise T4OrganizerFault(
+            f"{source} carries a label vocabulary on a {target_type!r} unit; "
+            "only classification units have one"
+        )
+    if (
+        not isinstance(raw, list)
+        or len(raw) < 2
+        or not all(isinstance(x, str) and x and x == x.strip() for x in raw)
+        or len(set(raw)) != len(raw)
+    ):
+        raise T4OrganizerFault(
+            f"{source} must be two or more unique non-empty strings; this is organizer "
+            "material, so a malformed vocabulary is ours, not the participant's"
+        )
+    return tuple(raw)
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,10 +132,10 @@ class EntityRoster:
             ids.append(entity["entity_id"])
         target = task.get("target")
         labels: tuple[str, ...] | None = None
-        if isinstance(target, Mapping) and isinstance(target.get("labels"), list):
-            raw = target["labels"]
-            if all(isinstance(x, str) and x for x in raw):
-                labels = tuple(raw)
+        if isinstance(target, Mapping) and "labels" in target:
+            labels = validated_label_vocabulary(
+                target["labels"], target.get("type"), source="task.json target.labels"
+            )
         return cls(entity_ids=tuple(ids), labels=labels)
 
 

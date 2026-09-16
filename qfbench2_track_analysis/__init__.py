@@ -24,6 +24,7 @@ from .scoring import (
     build_smoke_verifier,
     build_verifier,
     score_unit,
+    scorer_identity,
 )
 
 __all__ = [
@@ -33,4 +34,9 @@ __all__ = [
     "build_smoke_verifier",
     "build_verifier",
     "score_unit",
+    "scorer_identity",
 ]
+
+# The shared scorer version (see scoring.SCORER_VERSION). Exposed so a
+# participant can read it without importing the scoring module.
+__version__ = SCORER_VERSION
