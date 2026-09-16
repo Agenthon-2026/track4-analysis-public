@@ -10,7 +10,7 @@ import json
 from dataclasses import dataclass
 from typing import Literal
 
-from .client import ModelClient
+from .client import ModelClient, ModelBudgetExceeded
 from .evidence import evidence_references, prepare_evidence
 from .indexer import Chunk, IndexedCorpus
 from .prompts import SYSTEM_PROMPT, build_response_schema, build_user_prompt
@@ -23,6 +23,7 @@ FallbackReason = Literal[
     "forced_grounded",
     "no_endpoint",
     "model_request",
+    "model_budget",
     "model_json",
     "model_evidence",
     "model_prediction",
@@ -202,9 +203,11 @@ def run_entity(
         IndexError,
         OverflowError,
         RecursionError,
-    ):
+    ) as exc:
         result = run_entity_grounded(task, entity, index, corpus, top_k)
-        result.fallback_reason = failure_stage
+        result.fallback_reason = (
+            "model_budget" if isinstance(exc, ModelBudgetExceeded) else failure_stage
+        )
         return result
     return EntityResult(
         prediction=prediction, dropped_claims=dropped, model_raw=raw, source="model"

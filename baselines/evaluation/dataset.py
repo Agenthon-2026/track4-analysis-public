@@ -22,6 +22,7 @@ class Case:
     split: str
     group: str
     truth_path: Path | None = None
+    domain: str | None = None
 
 
 def public_roots() -> list[Path]:
@@ -73,6 +74,7 @@ def load_cases(*, units: Path | None, manifest: Path | None) -> list[Case]:
                 "split",
                 "group",
                 "truth_path",
+                "domain",
             }:
                 raise ValueError("invalid evaluation case fields")
             if not all(
@@ -86,6 +88,11 @@ def load_cases(*, units: Path | None, manifest: Path | None) -> list[Case]:
                 raise ValueError(
                     "private evaluation split must be train, calibration or test"
                 )
+            domain = row.get("domain")
+            if domain is not None and (
+                not isinstance(domain, str) or not domain.strip()
+            ):
+                raise ValueError("domain must be a nonempty string when provided")
             truth = row.get("truth_path")
             if truth is not None and (not isinstance(truth, str) or not truth):
                 raise ValueError("truth_path must be a nonempty string when provided")
@@ -99,6 +106,7 @@ def load_cases(*, units: Path | None, manifest: Path | None) -> list[Case]:
                     row["split"],
                     row["group"],
                     truth_path,
+                    domain,
                 )
             )
     if not cases:

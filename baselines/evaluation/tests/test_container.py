@@ -25,10 +25,18 @@ def fake_docker(monkeypatch, *, state=None, failure=None, artifacts=None):
         elif command == "start":
             code = state["ExitCode"]
         elif command == "inspect":
-            stdout = (
-                str(state["ExitCode"])
-                if argv[3] == "{{.State.ExitCode}}"
-                else json.dumps(state)
+            stdout = json.dumps(
+                [
+                    {
+                        "State": {**state, "OOMKilled": False},
+                        "Image": "test",
+                        "HostConfig": {
+                            "NanoCpus": 1000000000,
+                            "Memory": 1024**3,
+                            "NetworkMode": "none",
+                        },
+                    }
+                ]
             )
         elif command == "cp" and argv[2].startswith("synthetic-container:"):
             if artifacts:

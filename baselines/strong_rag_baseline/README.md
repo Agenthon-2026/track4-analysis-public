@@ -140,3 +140,20 @@ offline fallback. Run `../tests/test_submission_image.py` for the entrypoint and
 contracts, then use `smoke_image.sh` on a Docker host for an actual container run. Keep production
 NLI admission and evaluation on independently resolved outcomes as separate measurements; neither
 is claimed by these checks.
+
+
+## Per-unit request accounting
+
+The [client](client.py) shares one request budget across all entities in an analyze
+run. It counts each attempt before I/O, including failed, truncated and retried
+requests; after exhaustion, later entities use the grounded fallback without more
+HTTP calls. [Config](config.py) owns the conservative request/output ceilings and
+clamps environment output settings to the selected House limit. Those ceilings
+are not a claim about the organiser's still-pending BYO or input accounting.
+
+Optional diagnostics include a bounded request ledger: sequence, status, byte
+count, timing and request digest. Provider-reported token counts are recorded when
+valid and otherwise remain null. It contains no prompts, responses, endpoint URLs
+or credentials. Offline runs record zero attempts; an uninstrumented model client
+records no ledger rather than fabricating zero usage. This is client evidence,
+not an audited proxy bill or a production-runtime equivalence result.

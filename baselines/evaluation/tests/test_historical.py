@@ -252,3 +252,140 @@ def test_cpi_invalid_month_rejected_before_download(tmp_path, monkeypatch):
     )
     with pytest.raises(ValueError, match="target_month"):
         historical.build(spec, tmp_path / "cache", tmp_path / "built")
+
+
+def market_event():
+    return {
+        "id": "invented-market-window",
+        "cutoff": "2025-01-15",
+        "resolution": "2025-01-29",
+        "split": "train",
+    }
+
+
+def market_snapshots(family):
+    cutoff = date.fromisoformat(market_event()["cutoff"])
+    resolution = date.fromisoformat(market_event()["resolution"])
+    result = {}
+    for i, series in enumerate(historical.FAMILY_SERIES[family]):
+        base = Decimal(100 * (i + 1))
+        before = {cutoff - timedelta(days=j): base - j + 1 for j in range(1, 30)}
+        # The later vintage revises the old level. It must not replace the known reference.
+        after = {
+            cutoff - timedelta(days=1): Decimal("9999"),
+            resolution - timedelta(days=1): base
+            * (Decimal("1.1") - Decimal("0.1") * i),
+        }
+        for vintage, rows in ((cutoff, before), (resolution, after)):
+            result[(series, vintage)] = (
+                rows,
+                {"url": "https://example.invalid/synthetic", "vintage": str(vintage)},
+            )
+    return result
+
+
+@pytest.mark.parametrize("family", ["fx_return", "energy_return"])
+def test_market_views_bind_known_reference_domain_and_past_only_inputs(
+    tmp_path, monkeypatch, family
+):
+    pytest.importorskip("qfbench2_common")
+    from baselines.evaluation.dataset import load_cases, stage_inputs
+
+    snapshots = market_snapshots(family)
+    monkeypatch.setattr(
+        historical,
+        "snapshot",
+        lambda cache, series, vintage, **kwargs: snapshots[(series, vintage)],
+    )
+    spec = tmp_path / "spec.json"
+    spec.write_text(
+        json.dumps({"version": 1, "family": family, "events": [market_event()]})
+    )
+    roster = historical.build(spec, tmp_path / "cache", tmp_path / "built")
+    cases = load_cases(units=None, manifest=roster)
+    assert {case.domain for case in cases} == {historical.FAMILY_DOMAINS[family]}
+    assert {case.group for case in cases} == {market_event()["id"]}
+    assert len(cases) == 3
+    for case in cases:
+        task = json.loads((case.unit_dir / "task.json").read_text())
+        truth = json.loads(case.truth_path.read_text())
+        assert [row["y"] for row in truth["outcomes"]] == [10, 0, -10]
+        assert [row["start_level"] for row in task["entities"]] == [100, 200, 300]
+        assert [row["true_label"] for row in truth["outcomes"]] == [
+            "up",
+            "flat",
+            "down",
+        ]
+        assert ("labels" in task["target"]) == (
+            task["target"]["type"] == "classification"
+        )
+        staged = tmp_path / case.case_id
+        stage_inputs(case.unit_dir, staged)
+        text = " ".join(p.read_text() for p in (staged / "corpus").glob("*.json"))
+        assert "9999" not in text and "2025-01-28" not in text
+        assert not case.truth_path.is_relative_to(staged)
+        assert {p.name for p in staged.iterdir()} == {"task.json", "corpus"}
+        if family == "fx_return":
+            assert task["entities"][1]["quote_unit"] == "Japanese yen per U.S. dollar"
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "past_outcome",
+        "stale_input",
+        "missing_common",
+        "zero_reference",
+        "short_history",
+        "future_vintage",
+    ],
+)
+def test_market_invalid_windows_are_not_silently_dropped(tmp_path, defect):
+    snapshots = market_snapshots("fx_return")
+    cutoff, resolution = date(2025, 1, 15), date(2025, 1, 29)
+    before = snapshots[("DEXUSEU", cutoff)][0]
+    after = snapshots[("DEXUSEU", resolution)][0]
+    if defect == "past_outcome":
+        after.pop(resolution - timedelta(days=1))
+    elif defect == "stale_input":
+        for day in list(before):
+            if (cutoff - day).days <= 7:
+                del before[day]
+    elif defect == "missing_common":
+        before.clear()
+    elif defect == "zero_reference":
+        before[cutoff - timedelta(days=1)] = Decimal(0)
+    elif defect == "short_history":
+        for day in list(before):
+            if (cutoff - day).days > 2:
+                del before[day]
+    else:
+        for series in historical.FX_SERIES:
+            snapshots[(series, resolution)][0][resolution + timedelta(days=1)] = (
+                Decimal(100)
+            )
+    with pytest.raises(ValueError, match="market"):
+        historical.build_market_event(
+            tmp_path, market_event(), snapshots, family="fx_return"
+        )
+
+
+def test_market_overlapping_events_rejected_before_fetch(tmp_path, monkeypatch):
+    spec = tmp_path / "spec.json"
+    second = market_event() | {
+        "id": "overlapping",
+        "cutoff": "2025-01-28",
+        "resolution": "2025-02-10",
+    }
+    spec.write_text(
+        json.dumps(
+            {"version": 1, "family": "fx_return", "events": [market_event(), second]}
+        )
+    )
+    monkeypatch.setattr(
+        historical,
+        "snapshot",
+        lambda *a, **k: pytest.fail("must refuse before fetching"),
+    )
+    with pytest.raises(ValueError, match="windows must not overlap"):
+        historical.build(spec, tmp_path / "cache", tmp_path / "built")

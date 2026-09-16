@@ -378,3 +378,33 @@ def test_cli_selects_house_client_without_starting_local_server(monkeypatch, tmp
     )
     assert isinstance(seen[0][0], HTTPModelClient)
     assert seen[0][1] is False
+
+
+def test_budget_exhaustion_falls_back_without_a_second_http_request(
+    model_case, monkeypatch
+):
+    monkeypatch.setenv("MODEL_ENDPOINT", "https://house.example/v1")
+    calls = []
+    reply = json.dumps(
+        {
+            "choices": [
+                {
+                    "message": {"content": json.dumps(model_case[5])},
+                    "finish_reason": "stop",
+                }
+            ]
+        }
+    ).encode()
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *args, **kwargs: calls.append(1) or io.BytesIO(reply),
+    )
+    client = HTTPModelClient(replace(Config.from_env(), max_requests=1, max_retries=1))
+    task, entity, index, corpus, fallback, _ = model_case
+    first = agent.run_entity(task, entity, index, corpus, client, 5)
+    second = agent.run_entity(task, entity, index, corpus, client, 5)
+    assert first.source == "model"
+    assert second.prediction == fallback
+    assert second.fallback_reason == "model_budget"
+    assert calls == [1]
+    assert client.request_ledger()["attempts_used"] == 1

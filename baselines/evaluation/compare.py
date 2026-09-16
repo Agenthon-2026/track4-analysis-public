@@ -52,6 +52,10 @@ def compare(
     groups: dict[str, list[float]] = defaultdict(list)
     splits: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     kinds: dict[str, list[float]] = defaultdict(list)
+    kind_groups: dict[str, dict[str, list[float]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    domains: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for key, before in a.items():
         after = b[key]
         for field in (
@@ -64,6 +68,8 @@ def compare(
         ):
             if before[field] != after[field]:
                 raise ValueError(f"comparison {field} differs for {key}")
+        if before.get("domain") != after.get("domain"):
+            raise ValueError(f"comparison domain differs for {key}")
         # Judge/scorer identity includes local production-vs-smoke differences.
         for field in ("scorer", "judge"):
             if before["assessment"].get(field) != after["assessment"].get(field):
@@ -75,6 +81,9 @@ def compare(
         groups[before["group"]].append(delta)
         splits[before["split"]][before["group"]].append(delta)
         kinds[before["target_type"]].append(delta)
+        kind_groups[before["target_type"]][before["group"]].append(delta)
+        if before.get("domain"):
+            domains[before["domain"]][before["group"]].append(delta)
     if not 100 <= samples <= 100000:
         raise ValueError("bootstrap samples must be between 100 and 100000")
 
@@ -105,6 +114,10 @@ def compare(
         "by_target_type_mean_delta": {
             kind: mean(values) for kind, values in sorted(kinds.items())
         },
+        "by_target_type": {
+            key: summary(values) for key, values in sorted(kind_groups.items())
+        },
+        "by_domain": {key: summary(values) for key, values in sorted(domains.items())},
         "before_failures": sum(not r["assessment"]["admissible"] for r in a.values()),
         "after_failures": sum(not r["assessment"]["admissible"] for r in b.values()),
         "bootstrap": {

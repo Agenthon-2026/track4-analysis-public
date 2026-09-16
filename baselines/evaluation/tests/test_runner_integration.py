@@ -107,6 +107,9 @@ def test_truth_read_after_prediction_and_failed_execution_cannot_score_answer(
 
     def predict(stage, output, **kwargs):
         nonlocal finished
+        plan = json.loads((output.parents[1] / "run-plan.json").read_text())
+        assert plan["runs"][0]["case_id"] == "independent"
+        assert plan["runs"][0]["timeout_s"] == kwargs["timeout"]
         assert set(path.name for path in stage.iterdir()) == {"task.json", "corpus"}
         assert not list(stage.rglob("truth.json"))
         runner.write_json(output / "answer.json", answer_for())
@@ -188,3 +191,20 @@ def test_production_requires_truth_before_inference(tmp_path, monkeypatch, capsy
     )
     assert "requires external truth for every case" in capsys.readouterr().err
     assert not (out / "report.json").exists()
+
+
+def test_input_mutation_during_prediction_aborts_report(tmp_path, monkeypatch):
+    unit = build_unit(tmp_path / "inputs")
+
+    def mutate(stage, output, **kwargs):
+        path = unit / "task.json"
+        task = json.loads(path.read_text())
+        task["task_id"] = "changed-during-prediction"
+        path.write_text(json.dumps(task))
+        return {"returncode": 0, "timed_out": False, "isolation": "test"}
+
+    monkeypatch.setattr(runner, "run_local", mutate)
+    out = tmp_path / "report"
+    assert runner.main(["--units", str(unit.parent), "--out", str(out)]) == 2
+    assert not (out / "report.json").exists()
+    assert json.loads((out / "run-plan.json").read_text())["runs"]

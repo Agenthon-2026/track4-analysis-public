@@ -169,18 +169,9 @@ class TargetSpec:
                 lo = self.lower or 0.0
                 hi = min(self.upper if self.upper is not None else 1.0, 0.50)
             return lo, hi
-        if self.kind == "classification":
-            if "beat" in self.labels:
-                band = max(abs(point) * 0.10, 0.15)
-                lo, hi = point - band, point + band
-            elif "direction" in self.name or self.labels == ("up", "down"):
-                half = max(1.0, abs(point) * 0.02)
-                lo, hi = point - half, point + half
-            else:
-                half = max(1.0, abs(point) * 0.10)
-                lo, hi = point - half, point + half
-        elif self.mode == "change_bps":
-            half = 0.05 if abs(point) < 1e-6 else max(25.0, abs(point) * 0.35)
+        # Numeric target units also govern intervals on classification tasks.
+        if self.mode == "change_bps":
+            half = max(25.0, abs(point) * 0.35)
             lo, hi = point - half, point + half
         elif self.mode == "ratio":
             half = max(0.20, abs(point) * 0.08)
@@ -197,6 +188,16 @@ class TargetSpec:
         elif self.mode == "percent":
             half = 0.5 if abs(point) < 1e-6 else max(0.5, abs(point) * 0.25)
             lo, hi = point - half, point + half
+        elif self.kind == "classification":
+            if "beat" in self.labels:
+                band = max(abs(point) * 0.10, 0.15)
+                lo, hi = point - band, point + band
+            elif "direction" in self.name or self.labels == ("up", "down"):
+                half = max(1.0, abs(point) * 0.02)
+                lo, hi = point - half, point + half
+            else:
+                half = max(1.0, abs(point) * 0.10)
+                lo, hi = point - half, point + half
         else:
             half = max(1.0, abs(point) * 0.25)
             lo, hi = point - half, point + half

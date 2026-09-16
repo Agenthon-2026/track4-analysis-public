@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import json
+import copy
+import hashlib
 import time
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http.client import HTTPException
 from typing import Callable, Protocol
 from urllib.parse import urlsplit
 
-from .config import Config
+from .config import Config, HOUSE_MAX_OUTPUT_TOKENS, HOUSE_MAX_REQUESTS
+
+
+class ModelBudgetExceeded(RuntimeError):
+    """No further HTTP request may be made within this unit."""
 
 
 class ModelClient(Protocol):
@@ -24,10 +30,36 @@ class HTTPModelClient:
     config: Config
     base_url: str = ""
     deadline: float | None = None
+    _attempts: list[dict] = field(default_factory=list, init=False)
+    _budget_blocks: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
+        for value, limit in (
+            (self.config.max_requests, HOUSE_MAX_REQUESTS),
+            (self.config.max_tokens, HOUSE_MAX_OUTPUT_TOKENS),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or not 1 <= value <= limit
+            ):
+                raise ValueError(
+                    "model budget must stay within the configured House ceiling"
+                )
         if self.deadline is None:
             self.deadline = time.monotonic() + self.config.unit_timeout_s
+
+    def request_ledger(self) -> dict:
+        return {
+            "version": 1,
+            "source": "http-client",
+            "attempt_limit": self.config.max_requests,
+            "output_token_limit": self.config.max_tokens,
+            "attempts_used": len(self._attempts),
+            "budget_blocks": self._budget_blocks,
+            "attempts": copy.deepcopy(self._attempts),
+            "scope": "client attempts including failures; does not assert organizer billing or input-token accounting",
+        }
 
     def complete(self, system: str, user: str) -> str:
         return self._complete(system, user)
@@ -87,6 +119,20 @@ class HTTPModelClient:
             remaining = float(self.deadline) - time.monotonic()
             if remaining <= 0:
                 raise RuntimeError("unit model deadline exhausted") from last_error
+            if len(self._attempts) >= self.config.max_requests:
+                self._budget_blocks += 1
+                raise ModelBudgetExceeded("unit request budget exhausted")
+            started = time.monotonic()
+            record = {
+                "sequence": len(self._attempts) + 1,
+                "status": "pending",
+                "response_bytes": 0,
+                "request_sha256": hashlib.sha256(request.data).hexdigest(),
+                "prompt_tokens": None,
+                "completion_tokens": None,
+            }
+            # Count before I/O: failed, truncated and retried requests all consume an attempt.
+            self._attempts.append(record)
             try:
                 with urllib.request.urlopen(
                     request, timeout=min(self.config.timeout_s, remaining)
@@ -100,6 +146,7 @@ class HTTPModelClient:
                             )
                         part = response.read1(min(65536, 1_048_577 - size))
                         size += len(part)
+                        record["response_bytes"] = size
                         if size > 1_048_576:
                             raise ValueError("model response exceeds 1 MiB")
                         if not part:
@@ -107,6 +154,23 @@ class HTTPModelClient:
                         parts.append(part)
                     data = b"".join(parts)
                 body = json.loads(data.decode("utf-8"))
+                usage = body.get("usage", {}) if isinstance(body, dict) else {}
+                if isinstance(usage, dict):
+                    for key in ("prompt_tokens", "completion_tokens"):
+                        value = usage.get(key)
+                        if (
+                            isinstance(value, int)
+                            and not isinstance(value, bool)
+                            and value >= 0
+                        ):
+                            record[key] = value
+                if (
+                    record["completion_tokens"] is not None
+                    and record["completion_tokens"] > self.config.max_tokens
+                ):
+                    raise ValueError(
+                        "model response reports output beyond requested limit"
+                    )
                 if body["choices"][0].get("finish_reason") in {
                     "length",
                     "content_filter",
@@ -115,6 +179,7 @@ class HTTPModelClient:
                 content = body["choices"][0]["message"]["content"]
                 if not isinstance(content, str) or not content.strip():
                     raise ValueError("model response has no text content")
+                record["status"] = "success"
                 return content
             except (
                 OSError,
@@ -125,10 +190,18 @@ class HTTPModelClient:
                 ValueError,
                 RecursionError,
             ) as exc:
+                record["status"] = "error"
+                record["error_type"] = type(exc).__name__
                 last_error = exc
                 remaining = float(self.deadline) - time.monotonic()
-                if attempt + 1 < self.config.max_retries and remaining > 0:
+                if (
+                    attempt + 1 < self.config.max_retries
+                    and remaining > 0
+                    and len(self._attempts) < self.config.max_requests
+                ):
                     time.sleep(min(2**attempt, remaining))
+            finally:
+                record["elapsed_s"] = max(0.0, time.monotonic() - started)
         raise RuntimeError(
             f"model call failed after {self.config.max_retries} attempts"
         ) from last_error

@@ -53,6 +53,42 @@ def test_ambiguous_multi_entity_statement_is_not_attributed():
     assert packet.ledger["records"] == []
 
 
+@pytest.mark.parametrize("kind", ["classification", "regression", "ranking"])
+@pytest.mark.parametrize("metric", ["eps_yoy_growth_pct", "diluted_EPS"])
+def test_eps_queries_retrieve_per_share_values_before_generic_growth(kind, metric):
+    text = (
+        "Diluted earnings per common share were $2.40 for Q1 2024.\n"
+        "Economic growth forecasts reflect historical risks and future expectations."
+    )
+    packet, corpus = _packet(
+        [("Beta_Company_filing", "2024-05-01", text)],
+        target={"name": metric, "type": kind},
+        top_k=1,
+    )
+    [chunk] = packet.chunks
+    assert "$2.40" in chunk.text
+    assert "Economic growth" not in chunk.text
+    assert corpus.doc_texts[chunk.doc_id][chunk.span_start : chunk.span_end] == chunk.text
+
+
+def test_non_eps_growth_target_keeps_its_own_quantity():
+    packet, _ = _packet(
+        [
+            (
+                "Beta_Company_filing",
+                "2024-05-01",
+                "Diluted earnings per common share were $2.40.\n"
+                "Steps growth was 12 percent; guidance forecasts further growth.",
+            )
+        ],
+        target={"name": "steps_growth", "type": "regression"},
+        top_k=1,
+    )
+    [chunk] = packet.chunks
+    assert "12 percent" in chunk.text
+    assert "$2.40" not in chunk.text
+
+
 def test_cutoff_and_strict_document_dates_are_enforced():
     packet, _ = _packet(
         [

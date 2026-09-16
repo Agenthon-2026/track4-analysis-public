@@ -174,7 +174,8 @@ def collect_windows(
                     clean_snip = snippet.strip()
                     if (
                         clean_snip
-                        and clean_snip not in ("10-K", "10-Q", "8-K", "10-K/A", "10-Q/A")
+                        and clean_snip
+                        not in ("10-K", "10-Q", "8-K", "10-K/A", "10-Q/A")
                         and (owned or doc_match or _alias_hit(snippet, aliases))
                     ):
                         windows.append(
@@ -236,7 +237,60 @@ def _read_value(raw: str) -> float:
     )
 
 
-def _estimate(spec: TargetSpec, entity: dict[str, Any], text: str) -> Estimate | None:
+def _eps_level(text: str, context_prefix: str = "") -> float | None:
+    """Read a diluted per-share amount, excluding EPS numerators and denominators."""
+    text = text.replace("\u200b", " ")
+    number = rf"(?:\(\s*(?:{_NUMBER}|[+-]?\.\d+)\s*\)|{_NUMBER}|[+-]?\.\d+)"
+    metric = (
+        r"(?:diluted\s+(?:earnings|income|loss)\s+per\s+(?:common\s+)?share"
+        r"(?:\s+from\s+continuing\s+operations)?|diluted\s+eps|"
+        r"(?:earnings|income|loss)\s+per\s+diluted\s+(?:common\s+)?share|"
+        r"earnings\s*(?:\(loss\))?\s+per\s+(?:common\s+)?share"
+        r"(?:\s+of\s+common\s+stock)?\s*[-—–:]?\s*(?:diluted|assuming\s+dilution))"
+    )
+    caption = r"earnings\s*(?:\(loss\))?\s+per\s+(?:common\s+)?share\s*:?"
+    patterns = (
+        rf"{metric}(?:\s*\(EPS\))?(?:\s+(?:was|were|of|is))?\s*(?:\$|USD)?\s*(?P<value>{number})",
+        rf"{caption}\s+Basic\s+(?:\$?\s*{number}\s*){{1,8}}Diluted\s+\$?\s*(?P<value>{number})",
+        rf"net\s+(?:income|earnings)\b.{{0,120}}?\bor\s+\$?\s*(?P<value>{number})(?:\s+and\s+\$?\s*{number})?\s+per\s+diluted\s+(?:common\s+)?share",
+    )
+    matches = sorted(
+        (m for pattern in patterns for m in re.finditer(pattern, text, re.I)),
+        key=lambda m: m.start(),
+    )
+    for match in matches:
+        prefix = (context_prefix + text[: match.start()])[-100:]
+        if re.search(
+            r"(?:net\s+(?:income|loss)|shares|numerator|denominator)"
+            r"[^.!?\n]{0,80}(?:for|calculate|calculation\s+of)\s+(?:basic\s+and\s+)?$",
+            prefix,
+            re.I,
+        ):
+            continue
+        raw = match["value"]
+        # An unadorned integer after a heading may be a contents-page number.
+        if re.fullmatch(r"\d+", raw) and not re.search(
+            r"(?:\$|\bUSD|\bwas|\bwere|\bof|\bis)\s*$",
+            text[match.start() : match.start("value")],
+            re.I,
+        ):
+            continue
+        # A footnote followed by a financial row heading is not a negative EPS.
+        if re.fullmatch(r"\(\s*\d+\s*\)", raw) and re.match(
+            r"\s*(?:Income|Net|Weighted|Basic|Diluted)\b", text[match.end() :], re.I
+        ):
+            continue
+        value = _read_value(raw)
+        return -abs(value) if re.search(r"\bloss\s+per\b", match[0], re.I) else value
+    return None
+
+
+def _estimate(
+    spec: TargetSpec,
+    entity: dict[str, Any],
+    text: str,
+    context_prefix: str = "",
+) -> Estimate | None:
     number = rf"(?:\(\s*{_NUMBER}\s*\)|{_NUMBER})"
     if spec.mode in {"probability", "change_bps", "return_pct"} and spec.resolution:
         future_dates = {
@@ -356,8 +410,7 @@ def _estimate(spec: TargetSpec, entity: dict[str, Any], text: str) -> Estimate |
                         else (
                             5
                             if (
-                                "contracts" in text.lower()
-                                or "net_%oi" in text.lower()
+                                "contracts" in text.lower() or "net_%oi" in text.lower()
                             )
                             else (3 if "noncommercial" in text.lower() else 1)
                         )
@@ -370,6 +423,17 @@ def _estimate(spec: TargetSpec, entity: dict[str, Any], text: str) -> Estimate |
                 )
         return None
     if spec.mode == "growth_pct":
+        if "eps" in spec.name:
+            current, reference = _eps_level(text, context_prefix), entity.get(
+                "prior_year_q_eps"
+            )
+            if current is not None and finite_number(reference) and reference > 0:
+                return Estimate(
+                    (current / reference - 1) * 100,
+                    "historical diluted EPS persistence converted against supplied prior-year-quarter EPS",
+                    9,
+                )
+            return None
         metric = _metric(spec)
         match = re.search(
             rf"{metric}[^\d\n()+$-]{{0,32}}\$?\s*({number})\s*(million|billion|dollars)?\s*,?\s*(?:compared (?:to|with)|versus|vs\.?)[^\d\n()+$-]{{0,32}}\$?\s*({number})\s*(million|billion|dollars)?",
@@ -403,15 +467,8 @@ def _estimate(spec: TargetSpec, entity: dict[str, Any], text: str) -> Estimate |
             else None
         )
     if spec.mode == "eps":
-        match = re.search(
-            rf"{_metric(spec)}(?:\s*\(eps\))?(?:\s+(?:was|were|of|is))?\s*(?:[\$]|usd)?\s*({number})",
-            text,
-            re.I,
-        )
-        if match:
-            value = _read_value(match[1])
-            if "loss per share" in match[0].lower():
-                value = -abs(value)
+        value = _eps_level(text, context_prefix)
+        if value is not None:
             return Estimate(
                 value, "historical diluted EPS persistence; not reported future EPS", 8
             )
@@ -645,7 +702,14 @@ def ground_entity(
     for window in windows:
         if window.entity_ambiguous:
             continue
-        estimate = _estimate(spec, entity, window.text)
+        estimate = _estimate(
+            spec,
+            entity,
+            window.text,
+            corpus.doc_texts[window.doc_id][
+                max(0, window.span_start - 100) : window.span_start
+            ],
+        )
         if estimate and finite_number(estimate.point):
             if spec.lower is not None and estimate.point < spec.lower:
                 continue

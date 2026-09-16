@@ -121,6 +121,7 @@ def test_model_success_records_only_bounded_diagnostics(unit, tmp_path, monkeypa
     assert first.read_bytes() == second.read_bytes()
     assert "elapsed_s" not in second.read_text(encoding="utf-8")
     assert json.loads(diagnostics_path.read_text(encoding="utf-8")) == {
+        "request_ledger": None,
         "schema_version": "1",
         "task_id": "synthetic-diagnostics",
         "mode": "model",
@@ -235,3 +236,18 @@ def test_failed_answer_does_not_write_diagnostics(unit, tmp_path, monkeypatch):
             diagnostics_path=diagnostics_path,
         )
     assert not diagnostics_path.exists()
+
+
+def test_offline_diagnostics_record_zero_requests_without_inventing_model_usage(
+    unit, tmp_path
+):
+    task, corpus, _ = unit
+    path = tmp_path / "diagnostics.json"
+    cli.run(task, corpus, tmp_path / "answer.json", None, 5, diagnostics_path=path)
+    ledger = json.loads(path.read_text())["request_ledger"]
+    assert ledger == {
+        "version": 1,
+        "source": "offline",
+        "attempts_used": 0,
+        "attempts": [],
+    }

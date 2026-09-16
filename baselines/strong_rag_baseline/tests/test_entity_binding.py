@@ -20,12 +20,22 @@ from baselines.strong_rag_baseline.tests.test_quantities import predict
         ("-1.20", "-1.00", 20.0),
     ],
 )
-def test_growth_preserves_operand_signs(current, prior, growth):
+def test_generic_growth_preserves_operand_signs(current, prior, growth):
     result = predict(
-        "eps_yoy_growth_pct",
-        f"Widget A diluted EPS was {current} compared to {prior} in the prior year.",
+        "revenue_growth_pct",
+        f"Widget A revenue was {current} compared to {prior} in the prior year.",
     )
     assert result["point_forecast"] == pytest.approx(growth)
+
+
+@pytest.mark.parametrize("current", ["-1.20", "(1.20)"])
+def test_eps_growth_preserves_signed_level_with_task_reference(current):
+    result = predict(
+        "eps_yoy_growth_pct",
+        f"Widget A diluted EPS was {current} compared to 2.00 in the prior year.",
+        entity={"prior_year_q_eps": 1.0},
+    )
+    assert result["point_forecast"] == pytest.approx(-220.0)
 
 
 def _predict_company_b(text, *, doc_id="report"):

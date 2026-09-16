@@ -15,6 +15,12 @@ from .local_server import (
 )
 
 
+# Selected House allowance in the organiser SUBMISSION_CLI contract, 2026-09-15.
+# Also a conservative local/BYO ceiling; it does not claim a BYO entitlement.
+HOUSE_MAX_REQUESTS = 25
+HOUSE_MAX_OUTPUT_TOKENS = 4000
+
+
 def _env_on(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -44,6 +50,7 @@ class Config:
     local_port: int
     local_ctx: int
     local_startup_s: float
+    max_requests: int = HOUSE_MAX_REQUESTS
 
     @property
     def local_base_url(self) -> str:
@@ -72,7 +79,9 @@ class Config:
             timeout_s=_bounded_env("T4_MODEL_TIMEOUT_S", 30, 0.1, 60),
             max_retries=int(_bounded_env("T4_MODEL_RETRIES", 2, 1, 3)),
             temperature=_bounded_env("T4_TEMPERATURE", 0, 0, 2),
-            max_tokens=int(_bounded_env("T4_MAX_TOKENS", 1024, 64, 4096)),
+            max_tokens=int(
+                _bounded_env("T4_MAX_TOKENS", 1024, 64, HOUSE_MAX_OUTPUT_TOKENS)
+            ),
             unit_timeout_s=_bounded_env("T4_UNIT_TIMEOUT_S", 480, 1, 480),
             local_llama=_env_on("T4_LOCAL_LLAMA"),
             local_host=host,

@@ -123,6 +123,14 @@ def run(
         encoding="utf-8",
     )
     if diagnostics_path is not None:
+        ledger = getattr(client, "request_ledger", None)
+        diagnostics["request_ledger"] = (
+            ledger()
+            if callable(ledger) and not grounded
+            else {"version": 1, "source": "offline", "attempts_used": 0, "attempts": []}
+            if grounded or client is None
+            else None
+        )
         _write_diagnostics(diagnostics_path, diagnostics)
     return answer
 

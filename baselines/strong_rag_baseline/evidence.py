@@ -85,6 +85,9 @@ def evidence_queries(task: dict, entity: dict) -> list[str]:
     """Search the requested quantity from observation and expectation angles."""
     identity = " ".join(dict.fromkeys(_entity_aliases(entity)))
     metric = target_name(task)
+    # Filings spell out EPS; generic growth terms otherwise favor GDP scenarios.
+    if "eps" in re.findall(r"[a-z0-9]+", metric.lower()):
+        metric = "diluted earnings per common share EPS"
     base = " ".join(part for part in (identity, metric) if part).strip()
     # Candidates are already entity-bound; repeating the name in every query
     # gives short company headings four votes and crowds out financial facts.

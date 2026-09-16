@@ -35,6 +35,28 @@ CPI_SERIES = {
     "CUSR0000SAH1": "Shelter CPI",
     "CUSR0000SAS": "Services CPI",
 }
+FX_SERIES = {
+    "DEXUSEU": ("EUR", "U.S. dollars per euro"),
+    "DEXJPUS": ("JPY", "Japanese yen per U.S. dollar"),
+    "DEXUSUK": ("GBP", "U.S. dollars per U.K. pound"),
+}
+ENERGY_SERIES = {
+    "DCOILWTICO": ("WTI", "U.S. dollars per barrel, WTI at Cushing"),
+    "DCOILBRENTEU": ("BRENT", "U.S. dollars per barrel, Brent Europe"),
+    "DHHNGSP": ("HENRYHUB", "U.S. dollars per million BTU, Henry Hub natural gas"),
+}
+FAMILY_SERIES = {
+    "curve_change": SERIES,
+    "cpi_mom": CPI_SERIES,
+    "fx_return": FX_SERIES,
+    "energy_return": ENERGY_SERIES,
+}
+FAMILY_DOMAINS = {
+    "curve_change": "rates",
+    "cpi_mom": "inflation",
+    "fx_return": "foreign-exchange",
+    "energy_return": "energy",
+}
 KINDS = ("classification", "regression", "ranking")
 SOURCE = "https://alfred.stlouisfed.org/graph/alfredgraph.csv"
 
@@ -103,7 +125,7 @@ def parse_snapshot(payload: bytes, series: str, vintage: date) -> dict[date, Dec
 def snapshot(
     cache: Path, series: str, vintage: date, *, offline: bool
 ) -> tuple[dict, dict]:
-    if series not in SERIES and series not in CPI_SERIES:
+    if not any(series in roster for roster in FAMILY_SERIES.values()):
         raise ValueError("unsupported historical series")
     params = {
         "id": series,
@@ -137,12 +159,21 @@ def snapshot(
             "vintage": vintage.isoformat(),
             "sha256": hashlib.sha256(payload).hexdigest(),
             "retrieved_at": datetime.now(timezone.utc).isoformat(),
-            "license": (
-                "public-domain US government observations; cite FRED/ALFRED and BLS CPI"
-                if series in CPI_SERIES
-                else "public-domain US government observations; cite FRED/ALFRED and Federal Reserve H.15"
-            ),
+            "license": "public-domain observations; citation requested",
+            "series_metadata": f"https://fred.stlouisfed.org/series/{series}",
+            "license_url": "https://fred.stlouisfed.org/legal/#copyright-public-domain",
+            "publisher": "U.S. Energy Information Administration"
+            if series in ENERGY_SERIES
+            else "U.S. Bureau of Labor Statistics"
+            if series in CPI_SERIES
+            else "Board of Governors of the Federal Reserve System",
         }
+        if series in ENERGY_SERIES or series in FX_SERIES:
+            meta["publisher_reuse_terms"] = (
+                "https://www.eia.gov/about/copyrights_reuse.php"
+                if series in ENERGY_SERIES
+                else "https://www.federalreserve.gov/disclaimer.htm"
+            )
         path.write_bytes(payload)
         write_json(meta_path, meta)
         time.sleep(0.2)
@@ -243,6 +274,110 @@ def build_event(out: Path, event: dict, snapshots: dict) -> list[dict]:
         classification="Labels: up if change > 5 bps, down if change < -5 bps, flat otherwise.",
         ranking="Rank larger yield changes higher; point_forecast is the predicted change, not a rank integer.",
         limitations="One rates domain with three correlated target views; not representative of hidden T4 families. Model training contamination is not certified.",
+    )
+
+
+def build_market_event(
+    out: Path, event: dict, snapshots: dict, *, family: str
+) -> list[dict]:
+    """Quote-level changes measured from the known cutoff reference, never a revised one."""
+    if family not in ("fx_return", "energy_return"):
+        raise ValueError("unsupported market-return family")
+    roster = FAMILY_SERIES[family]
+    cutoff = date.fromisoformat(event["cutoff"])
+    resolution = date.fromisoformat(event["resolution"])
+    if not 0 < (resolution - cutoff).days <= 60:
+        raise ValueError("market event needs a positive horizon of at most 60 days")
+    starts = set.intersection(
+        *(set(snapshots[(series, cutoff)][0]) for series in roster)
+    )
+    ends = set.intersection(
+        *(set(snapshots[(series, resolution)][0]) for series in roster)
+    )
+    if not starts or not ends:
+        raise ValueError("market snapshots have no common observations")
+    start, end = max(starts), max(ends)
+    if not start <= cutoff < end <= resolution:
+        raise ValueError(
+            "market snapshots must resolve an observation after the cutoff"
+        )
+    if (cutoff - start).days > 7 or (resolution - end).days > 7:
+        raise ValueError("stale market snapshot")
+    entities, outcomes, documents, sources = [], [], {}, []
+    for series, (entity_id, quote_unit) in roster.items():
+        before, before_meta = snapshots[(series, cutoff)]
+        after, after_meta = snapshots[(series, resolution)]
+        if before[start] <= 0:
+            raise ValueError("market return requires a positive cutoff reference")
+        history = sorted(
+            day for day in before if cutoff - timedelta(days=35) <= day <= start
+        )
+        if len(history) < 5:
+            raise ValueError("market snapshot has insufficient recent context")
+        selected = sorted(set(history[::5] + history[-5:]))
+        doc_id = f"ALFRED_{series}_{cutoff:%Y%m%d}"
+        text = (
+            f"{entity_id}: {series}, quoted in {quote_unit}. Values available in the ALFRED "
+            f"vintage dated {cutoff}. These are historical observations, not future forecasts.\n"
+            f"date | {series}\n"
+            + "\n".join(f"{day} | {before[day]}" for day in selected)
+        )
+        entities.append(
+            {
+                "entity_id": entity_id,
+                "name": quote_unit,
+                "series_fred": series,
+                "start_level": float(before[start]),
+                "as_of": start.isoformat(),
+                "quote_unit": quote_unit,
+                "unit": "percent",
+            }
+        )
+        change = float((after[end] / before[start] - 1) * 100)
+        outcomes.append(
+            {
+                "entity_id": entity_id,
+                "y": change,
+                "true_label": "up" if change > 0 else "down" if change < 0 else "flat",
+            }
+        )
+        documents[doc_id] = {
+            "doc_id": doc_id,
+            "doc_date": cutoff.isoformat(),
+            "source": before_meta["url"],
+            "text": text,
+        }
+        sources.append({"series": series, "input": before_meta, "outcome": after_meta})
+    domain = FAMILY_DOMAINS[family]
+    prompt = (
+        f"Using only the frozen table and corpus, predict {domain} quote-level changes. "
+        "The target is 100 * (the latest common quote level available in the ALFRED vintage "
+        f"of {resolution} / start_level - 1). The starting reference is frozen at cutoff; "
+        "do not substitute a revised starting value from a later vintage. Quotation units and "
+        "directions are stated per entity; do not invert exchange-rate quotes. "
+        "The outcome observation must be after cutoff. Publication can lag the observation date. "
+        "Provide a numeric point_forecast and a 90% interval in percent, with citations. "
+        "Historical quotes are inputs, not known future outcomes. "
+    )
+    return _write_views(
+        out,
+        event,
+        entities,
+        outcomes,
+        documents,
+        sources,
+        start=start,
+        end=end,
+        slug=family.removesuffix("_return"),
+        family=f"local_{family}_vintage",
+        title=f"Local {domain} quote-level cross-section",
+        tag=domain,
+        target_name=f"{family}_pct",
+        unit_name="percent",
+        prompt=prompt,
+        classification="Labels: up if change > 0 percent, down if change < 0 percent, flat otherwise.",
+        ranking="Rank larger quote-level percentage changes higher; point_forecast is the change, not a rank integer.",
+        limitations="Specified-vintage quotes with publication delays, not certified first-release values. Entity quotes and target views are correlated; each window is one event group. Separate domains may share market shocks. Input history is not a future forecast or production NLI evidence.",
     )
 
 
@@ -463,6 +598,7 @@ def _write_views(
                 "truth_path": f"truth/{case_id}.json",
                 "split": event["split"],
                 "group": event["id"],
+                "domain": tag,
             }
         )
     write_json(
@@ -485,9 +621,9 @@ def build(spec_path: Path, cache: Path, out: Path, *, offline: bool = False) -> 
         require_external(path, roots)
     spec = json.loads(spec_path.read_text())
     family = spec.get("family", "curve_change")
-    if family not in ("curve_change", "cpi_mom"):
+    if family not in FAMILY_SERIES:
         raise ValueError("unsupported historical family")
-    series_roster = CPI_SERIES if family == "cpi_mom" else SERIES
+    series_roster = FAMILY_SERIES[family]
     events = spec.get("events")
     if spec.get("version") != 1 or not isinstance(events, list) or not events:
         raise ValueError("expected version 1 and a nonempty events roster")
@@ -566,8 +702,15 @@ def build(spec_path: Path, cache: Path, out: Path, *, offline: bool = False) -> 
     out.mkdir(parents=True)
     for folder in ("truth", "provenance"):
         (out / folder).mkdir()
-    builder = build_cpi_event if family == "cpi_mom" else build_event
-    cases = [case for event in events for case in builder(out, event, snapshots)]
+    if family in ("fx_return", "energy_return"):
+        cases = [
+            case
+            for event in events
+            for case in build_market_event(out, event, snapshots, family=family)
+        ]
+    else:
+        builder = build_cpi_event if family == "cpi_mom" else build_event
+        cases = [case for event in events for case in builder(out, event, snapshots)]
     manifest = out / "manifest.json"
     write_json(manifest, {"version": 1, "cases": cases})
     load_cases(units=None, manifest=manifest)
@@ -593,9 +736,8 @@ def build(spec_path: Path, cache: Path, out: Path, *, offline: bool = False) -> 
             "cases": len(cases),
             "entities_per_case": len(series_roster),
             "official_score": None,
-            "domain": "CPI component cross-sections only"
-            if family == "cpi_mom"
-            else "Treasury yield cross-sections only",
+            "domain": FAMILY_DOMAINS[family],
+            "family": family,
         },
     )
     return manifest

@@ -14,7 +14,16 @@ import tempfile
 import time
 from pathlib import Path
 
+from .artifacts import digest as artifact_digest
 from .dataset import REPO, load_cases, public_roots, require_external, stage_inputs
+from .engineering import (
+    LOCAL_CPUS,
+    LOCAL_MEMORY_BYTES,
+    contract,
+    image_identity,
+    make_run_plan,
+    verify_run_plan,
+)
 from .report import markdown, summarize
 
 
@@ -96,7 +105,13 @@ def run_local(
 
 
 def run_container(
-    stage: Path, output: Path, *, image: str, seed: int, timeout: float
+    stage: Path,
+    output: Path,
+    *,
+    image: str,
+    seed: int,
+    timeout: float,
+    exercise: tuple[Path, str] | None = None,
 ) -> dict:
     def docker(*args, limit=60, check=True, quiet=False):
         return subprocess.run(
@@ -108,16 +123,7 @@ def run_container(
             timeout=limit,
         )
 
-    container = docker(
-        "create",
-        "--platform",
-        "linux/amd64",
-        "--network=none",
-        "--cpus=1",
-        "--memory=1g",
-        "-e",
-        f"QFBENCH_SEED={seed}",
-        image,
+    command = [
         "analyze",
         "--task",
         "/input/task.json",
@@ -128,12 +134,32 @@ def run_container(
         "--diagnostics",
         "/output/diagnostics.json",
         "--mock",
+    ]
+    entrypoint = []
+    if exercise is not None:
+        entrypoint = ["--entrypoint", "python"]
+        command = ["/exercise.py", exercise[1]]
+    container = docker(
+        "create",
+        "--platform",
+        "linux/amd64",
+        "--network=none",
+        f"--cpus={LOCAL_CPUS}",
+        f"--memory={LOCAL_MEMORY_BYTES}",
+        "-e",
+        f"QFBENCH_SEED={seed}",
+        *entrypoint,
+        image,
+        *command,
     ).stdout.strip()
     try:
         # Precreate the output directory so a missing answer is scored as a failed case.
         with tempfile.TemporaryDirectory(prefix="t4-empty-output-") as empty:
             docker("cp", empty, f"{container}:/output")
         docker("cp", str(stage), f"{container}:/input")
+        if exercise is not None:
+            docker("cp", str(exercise[0]), f"{container}:/exercise.py")
+        started = time.monotonic()
         try:
             docker(
                 "start", "--attach", container, limit=timeout, check=False, quiet=True
@@ -143,11 +169,19 @@ def run_container(
                 "returncode": 124,
                 "timed_out": True,
                 "isolation": "docker-network-none",
-                "limits": {"cpus": 1, "memory": "1g"},
+                "limits": {"cpus": LOCAL_CPUS, "memory_bytes": LOCAL_MEMORY_BYTES},
             }
-        state = json.loads(
-            docker("inspect", "--format", "{{json .State}}", container).stdout
-        )
+        process_elapsed = time.monotonic() - started
+        info = json.loads(docker("inspect", container).stdout)[0]
+        state = info["State"]
+        host = info["HostConfig"]
+        observation = {
+            "image_id": info["Image"],
+            "cpus": host["NanoCpus"] / 10**9,
+            "memory_bytes": host["Memory"],
+            "network": host["NetworkMode"],
+            "oom_killed": state["OOMKilled"],
+        }
         if state["Status"] != "exited" or state.get("Error"):
             raise RuntimeError(
                 "evaluation container did not complete: Docker runtime failure"
@@ -158,7 +192,10 @@ def run_container(
             # Participant files cannot replace evaluator records or link to host data.
             with tempfile.TemporaryDirectory(prefix="t4-container-output-") as temp:
                 docker("cp", f"{container}:/output/.", temp)
-                for name in ("answer.json", "diagnostics.json"):
+                names = ("answer.json", "diagnostics.json")
+                if exercise is not None:
+                    names += ("exercise.json",)
+                for name in names:
                     source = Path(temp) / name
                     if source.is_symlink() or (
                         source.exists() and not source.is_file()
@@ -170,8 +207,10 @@ def run_container(
             "returncode": code,
             "timed_out": False,
             "isolation": "docker-network-none",
-            "limits": {"cpus": 1, "memory": "1g"},
+            "limits": {"cpus": LOCAL_CPUS, "memory_bytes": LOCAL_MEMORY_BYTES},
             "artifact_errors": artifact_errors,
+            "process_elapsed_s": process_elapsed,
+            "resource_observation": observation,
         }
     finally:
         docker("rm", "--force", container)
@@ -263,37 +302,48 @@ def main(argv: list[str] | None = None) -> int:
         }
         image = None
         if args.image:
-            result = subprocess.run(
-                ["docker", "image", "inspect", args.image],
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=30,
-            )
-            info = json.loads(result.stdout)[0]
-            if info["Architecture"] != "amd64":
-                raise ValueError("evaluation image must be linux/amd64")
-            image = info["Id"]
-            identity["image_id"] = image
-            identity["image_repo_digests"] = info.get("RepoDigests", [])
+            identity.update(image_identity(args.image))
+            image = identity["image_id"]
+        plan = make_run_plan(
+            cases,
+            args.seeds,
+            identity=identity,
+            timeout=args.timeout,
+            mode=args.mode,
+            profile=args.profile,
+        )
+        planned = {(row["case_id"], row["seed"]): row for row in plan["runs"]}
         args.out = args.out.resolve()
         args.out.mkdir(parents=True, exist_ok=False)
+        write_json(args.out / "run-plan.json", plan)
         rows = []
         for case in cases:
             for seed in args.seeds:
+                frozen = planned[(case.case_id, seed)]
                 output = args.out / case.case_id / f"seed-{seed}"
                 output.mkdir(parents=True)
                 started = time.monotonic()
                 with tempfile.TemporaryDirectory(prefix="t4-evaluation-input-") as temp:
                     stage = Path(temp) / "input"
                     digest = stage_inputs(case.unit_dir, stage)
+                    if (
+                        digest != frozen["input_digest"]
+                        or contract(case.unit_dir) != frozen["resource_contract"]
+                    ):
+                        raise ValueError(
+                            "prediction inputs or resource contract changed after run plan was frozen"
+                        )
                     evidence = evidence_ledger(stage, model=args.mode == "model")
                     write_json(output / "evidence.json", evidence)
                     preparation_elapsed = time.monotonic() - started
                     started = time.monotonic()
                     if image:
                         execution = run_container(
-                            stage, output, image=image, seed=seed, timeout=args.timeout
+                            stage,
+                            output,
+                            image=image,
+                            seed=seed,
+                            timeout=frozen["timeout_s"],
                         )
                     else:
                         execution = run_local(
@@ -301,9 +351,12 @@ def main(argv: list[str] | None = None) -> int:
                             output,
                             mode=args.mode,
                             seed=seed,
-                            timeout=args.timeout,
+                            timeout=frozen["timeout_s"],
                         )
                 elapsed = time.monotonic() - started
+                with tempfile.TemporaryDirectory(prefix="t4-verify-input-") as temp:
+                    if stage_inputs(case.unit_dir, Path(temp) / "input") != digest:
+                        raise ValueError("prediction inputs changed during execution")
                 # Truth paths are never passed to the predictor and opened only after it exits.
                 truth_text = (
                     case.truth_path.read_text(encoding="utf-8")
@@ -321,19 +374,20 @@ def main(argv: list[str] | None = None) -> int:
                     realized=realized,
                     profile=args.profile,
                 )
+                if contract(case.unit_dir) != frozen["resource_contract"]:
+                    raise ValueError("resource contract changed during prediction")
                 row = {
+                    **frozen,
                     "case_id": case.case_id,
                     "split": case.split,
                     "group": case.group,
+                    "domain": case.domain,
                     "seed": seed,
                     "profile": args.profile,
                     "input_digest": digest,
                     "truth_digest": hashlib.sha256(truth_text.encode()).hexdigest()
                     if truth_text is not None
                     else None,
-                    "target_type": json.loads(
-                        (case.unit_dir / "task.json").read_text()
-                    )["target"]["type"],
                     "answer_sha256": hashlib.sha256(
                         (output / "answer.json").read_bytes()
                     ).hexdigest()
@@ -356,6 +410,9 @@ def main(argv: list[str] | None = None) -> int:
                 }
                 diagnostics_path = output / "diagnostics.json"
                 if diagnostics_path.is_file():
+                    row["diagnostics_sha256"] = hashlib.sha256(
+                        diagnostics_path.read_bytes()
+                    ).hexdigest()
                     row["diagnostics"] = json.loads(
                         diagnostics_path.read_text(encoding="utf-8")
                     )
@@ -371,6 +428,8 @@ def main(argv: list[str] | None = None) -> int:
             "mode": args.mode,
             "profile": args.profile,
             "provenance": identity,
+            "run_plan": plan,
+            "run_plan_digest": artifact_digest(plan),
             "runs": rows,
             "summary": summarize(rows),
             "by_split": {
@@ -378,6 +437,7 @@ def main(argv: list[str] | None = None) -> int:
                 for split in sorted({row["split"] for row in rows})
             },
         }
+        verify_run_plan(report)
         write_json(args.out / "report.json", report)
         (args.out / "report.md").write_text(markdown(report), encoding="utf-8")
         print(f"Report: {args.out / 'report.md'}")

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "championship-internal-v1",
+  "min_event_groups": 60,
+  "min_domains": 3,
+  "min_groups_per_stratum": 20,
+  "min_repeats": 3,
+  "min_mean_gain": 0.01,
+  "min_stratum_gain": -0.01,
+  "max_p95_timeout_fraction": 0.8,
+  "confirmation_batches": 2,
+  "max_candidates_per_round": 3,
+  "bootstrap_samples": 10000,
+  "bootstrap_seed": 20260915,
+  "target_types": ["classification", "regression", "ranking"]
+}
