@@ -274,8 +274,13 @@ and `F.analysis_composite` functions used by `scoring/scoring.py`.
 Before your submission reaches the official scorer, you can pre-check it locally:
 
 ```bash
+pip install transformers torch   # the judge's NLI models; not needed for the scaffolds or --mock
 python faithfulness/judge.py --answer /tmp/my_answer.json --unit units/<unit-id>
 ```
+
+Without `transformers` and `torch` the command prints `Judge unavailable; no prediction was
+scored` and `GATE: FAIL (judge not available — install dependencies)` — that is the missing
+dependency, not your answer. The first run downloads the two pinned DeBERTa NLI models.
 
 `--unit` is **required** with `--answer`, and it is the unit *directory* — the one holding
 `task.json`, `card.toml`, `manifest.json` and `corpus/` — not the corpus directory alone. All
