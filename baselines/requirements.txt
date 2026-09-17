@@ -5,7 +5,7 @@
 # Install the shared toolkit only if you also want to run the local faithfulness
 # smoke check (faithfulness/judge.py) or the scoring harness (scoring/scoring.py):
 #
-#   qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.3.1#subdirectory=common
+#   qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.2#subdirectory=common
 #
 # The strong RAG baseline in baselines/strong_rag_baseline/ IS shipped and runnable
 # (BM25 retrieval + house model over $MODEL_ENDPOINT, or --mock). Unreleased: only its
