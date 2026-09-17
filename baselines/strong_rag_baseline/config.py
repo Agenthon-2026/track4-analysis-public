@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Config:
-    model_endpoint: str  # OpenAI-compatible base URL, e.g. http://host/v1
+    model_endpoint: str  # House route origin as injected (http://host:port); a local http://host/v1 also works
     model_id: str
     model_token: str | None
     seed: int  # forwarded to the model AND used for any local tie-breaking
