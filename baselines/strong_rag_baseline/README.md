@@ -32,10 +32,10 @@ Environment:
 
 | Var | Meaning | Default |
 |---|---|---|
-| `MODEL_ENDPOINT` | OpenAI-compatible base URL (harness-injected at scoring time) | — (required unless `--mock`) |
+| `MODEL_ENDPOINT` | House route origin (harness-injected at scoring time); requests go to `$MODEL_ENDPOINT/v1/chat/completions`. A local URL already ending in `/v1` also works | — (required unless `--mock`) |
 | `MODEL_NAME` | model id sent in the request — this is what the harness injects (see `SUBMISSION_CLI.md`, container environment contract) | empty |
 | `MODEL_ID` | local-dev fallback for `MODEL_NAME`; read only when `MODEL_NAME` is unset | empty |
-| `MODEL_TOKEN` | bearer token, if the endpoint needs one (local-dev convenience — not part of the published container contract) | none |
+| `MODEL_TOKEN` | per-unit bearer credential (harness-injected at scoring time); sent as `Authorization: Bearer` on every request. Optional locally | none |
 | `T4_SEED` | seed forwarded to the model | `20260731` |
 | `T4_TOP_K` | retrieved chunks per entity | `10` |
 | `T4_MODEL_TIMEOUT_S` / `T4_MODEL_RETRIES` | per-call timeout / retry count | `60` / `3` |
@@ -48,7 +48,7 @@ Local model example: `ollama serve` + `MODEL_ENDPOINT=http://localhost:11434/v1 
 |---|---|
 | `indexer.py` | One chunk per corpus span; global offsets follow the scorer's join-with-space convention, so every chunk is citation-ready as-is |
 | `retriever.py` | Pure-Python Okapi BM25; docs with missing or post-cutoff `doc_date` dropped before scoring; ties break by `(doc_id, span_start)` |
-| `client.py` | stdlib HTTP client for `/chat/completions` (temp 0, seed, retries) + `MockModelClient` for tests |
+| `client.py` | stdlib HTTP client for `$MODEL_ENDPOINT/v1/chat/completions` with the `MODEL_TOKEN` bearer (temp 0, seed, retries) + `MockModelClient` for tests |
 | `prompts.py` | Per-target-type prompt; demands one JSON object with verbatim quotes |
 | `span_finder.py` | Locates quotes as exact substrings (length-preserving curly-quote normalization); never trusts model offsets |
 | `agent.py` | Orchestration; ungroundable quotes fall back to the source chunk's known-good offsets or are dropped; off-vocabulary labels and missing intervals get deterministic fallbacks |

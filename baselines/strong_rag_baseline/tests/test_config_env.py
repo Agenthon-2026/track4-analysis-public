@@ -43,3 +43,24 @@ def test_model_id_survives_as_local_dev_fallback(
 ) -> None:
     monkeypatch.setenv("MODEL_ID", "qwen2.5:7b")
     assert Config.from_env().model_id == "qwen2.5:7b"
+
+
+def test_chat_completions_url_adds_v1_for_the_injected_origin() -> None:
+    """The harness injects the route origin; the API lives under /v1 (hub HOUSE-MODEL.md)."""
+    from strong_rag_baseline.client import chat_completions_url
+
+    assert (
+        chat_completions_url("http://house-rehearsal.agenthon.internal:8443")
+        == "http://house-rehearsal.agenthon.internal:8443/v1/chat/completions"
+    )
+    assert (
+        chat_completions_url("http://house-rehearsal.agenthon.internal:8443/")
+        == "http://house-rehearsal.agenthon.internal:8443/v1/chat/completions"
+    )
+
+
+def test_chat_completions_url_keeps_a_local_v1_base() -> None:
+    from strong_rag_baseline.client import chat_completions_url
+
+    assert chat_completions_url("http://localhost:11434/v1") == "http://localhost:11434/v1/chat/completions"
+    assert chat_completions_url("http://localhost:11434/v1/") == "http://localhost:11434/v1/chat/completions"
