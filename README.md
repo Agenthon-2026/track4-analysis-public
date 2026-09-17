@@ -203,8 +203,9 @@ the harness (`g2`).
    See [adapter-only BYO](SUBMISSION_CLI.md#adapter-only-byo) for packaging and serving rules.
 
 At scoring time the container sees: `HTTP_PROXY`/`HTTPS_PROXY` pointing at the audited proxy,
-`MODEL_ENDPOINT` pointing at the organizer-hosted OpenAI-compatible endpoint (e.g.
-`http://model:8000/v1`) when available, and `QFBENCH_NETWORK=restricted`. Local smoke runs
+`MODEL_ENDPOINT` set to the origin of the organizer-hosted House route (e.g. `http://model:8443`,
+no path — the OpenAI-compatible API is served under `/v1`), `MODEL_TOKEN` carrying the per-unit
+bearer, and `QFBENCH_NETWORK=restricted`; see [Calling the House route](https://github.com/Agenthon-2026/Agenthon2026-public/blob/main/docs/HOUSE-MODEL.md#calling-the-house-route). Local smoke runs
 without the eval network fall back to `--network=none`, so your agent must degrade gracefully
 (still emit a schema-valid `answer.json`) when model APIs are unreachable.
 
