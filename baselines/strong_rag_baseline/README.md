@@ -15,6 +15,13 @@ pin and seed (temperature 0, fixed seed, stable tie-breaks).
 server; quality acceptance (beats `baseline_agent/`, ≥0.80 faithfulness under the pinned judge)
 waits on the staging `$MODEL_ENDPOINT`.
 
+`--mock` is a **wiring check, not a prediction**. It answers from the prompt it is handed:
+it quotes a verbatim slice of the top retrieved excerpt, so the quote grounds to a real span
+through the same path a real model's quote takes, and every row comes back with at least one
+grounded claim. What it does not do is forecast — `point_forecast` is `0.0` except on ranking
+units, where a constant vector would be the degenerate answer of public #47. Use it to prove
+retrieval → prompt → parse → ground → assemble works end to end; do not read its numbers.
+
 ## Run
 
 ```bash

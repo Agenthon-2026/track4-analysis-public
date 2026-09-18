@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -30,14 +31,105 @@ from .formatter import build_answer
 from .indexer import build_index
 from .retriever import BM25Index
 
-_MOCK_REPLY = json.dumps(
-    {
-        "label": None,
-        "point_forecast": 0.0,
-        "interval": {"level": 0.90, "lo": -1.0, "hi": 1.0},
-        "evidence": [],
-    }
-)
+# --------------------------------------------------------------------------- #
+# --mock                                                                      #
+# --------------------------------------------------------------------------- #
+# The mock used to return a fixed reply carrying `"evidence": []`. The pipeline then
+# worked exactly as designed -- it grounded the zero quotes it was given -- and wrote an
+# answer whose every row had an empty `claims` array. That is not a weak answer: an empty
+# or absent `claims` on ANY row fails `g1_schema` for the WHOLE submission, scored
+# `t4.schema_invalid` at `W = -0.27`. So the documented smoke command produced the
+# worst-scoring artifact the benchmark can express, and reported "0 grounded claims" as
+# though that were a neutral fact.
+#
+# The mock now answers from the prompt it is handed, which is its only channel: it quotes
+# a verbatim slice of the first retrieved excerpt, so the quote grounds to a real span
+# through the same `find_span` path a real model's quote takes. `--mock` therefore
+# exercises retrieval -> prompt -> parse -> ground -> assemble end to end, which is what
+# "runnable end to end" was always meant to claim.
+#
+# It is still a stub and does not predict: `point_forecast` is 0.0, because a number a stub
+# invented is not a forecast and pretending otherwise reads as one. The single exception is
+# RANKING units, where the scorer reads `point_forecast` and nothing else, so an identical
+# vector is the degenerate answer whose score depends on the sealed roster order rather than
+# on the prediction (public #47). There the stub echoes one of the entity's own features --
+# not because the number means anything, but so that no shipped code here models that shape.
+# Echoing a feature on the other target types would be worse than 0.0, not better: on the
+# EPS exemplar the first numeric feature is `mktcap_bn`, and emitting 2650.0 as a forecast
+# of a ~1.50 EPS looks like a real prediction that is badly wrong, rather than an obvious
+# placeholder.
+
+#: `[1] doc_id=... (doc_date=...)` followed by the excerpt in triple quotes, as
+#: `prompts.build_user_prompt` emits it.
+_EXCERPT_RE = re.compile(r'\[\d+\] doc_id=(\S+) \(doc_date=[^)]*\)\n"""(.*?)"""', re.DOTALL)
+_ALLOWED_LABELS_RE = re.compile(r"^ALLOWED LABELS: (.+)$", re.MULTILINE)
+_TARGET_TYPE_RE = re.compile(r"^TARGET: .*\((\w+)\)$", re.MULTILINE)
+_ENTITY_NUMERIC_RE = re.compile(r"^  \w+: (-?\d+(?:\.\d+)?)$", re.MULTILINE)
+
+#: Quote budget. Long enough that the NLI judge gets a real premise rather than a
+#: fragment, short enough to stay inside one excerpt.
+_QUOTE_CHARS = 200
+
+
+def _verbatim_quote(excerpt: str) -> str:
+    """A prefix of ``excerpt``, trimmed at a word boundary so it stays an exact substring.
+
+    Exactness is the whole contract: `span_finder.find_span` locates the quote by
+    `doc_text.find(quote)`, and an excerpt is itself a slice of the document, so any slice
+    of the excerpt resolves. Trimming mid-word would still resolve; trimming at whitespace
+    just makes the emitted claim readable.
+    """
+    text = excerpt.strip()
+    if len(text) <= _QUOTE_CHARS:
+        return text
+    cut = text[:_QUOTE_CHARS]
+    spaced = cut.rsplit(" ", 1)[0]
+    return spaced if spaced else cut
+
+
+def _mock_reply(system: str, user: str) -> str:
+    """Answer the prompt from the prompt: quote the first excerpt it offers.
+
+    Returns the same JSON shape `prompts.build_user_prompt` asks a real model for, so it
+    travels the identical parse-and-ground path. With no excerpt to quote -- a unit where
+    retrieval returned nothing -- it emits no evidence, which is the honest answer and
+    still the one that fails `g1_schema`. That is a property of the unit, not of the mock.
+    """
+    del system  # the stub does not read its instructions
+    match = _EXCERPT_RE.search(user)
+    evidence = []
+    if match is not None:
+        doc_id, excerpt = match.group(1), match.group(2)
+        quote = _verbatim_quote(excerpt)
+        if quote:
+            evidence = [
+                {
+                    "doc_id": doc_id,
+                    "quote": quote,
+                    "claim": (
+                        f"Mock baseline: the cited passage from {doc_id} is the "
+                        "top-ranked pre-cutoff excerpt retrieved for this entity."
+                    ),
+                }
+            ]
+
+    labels_match = _ALLOWED_LABELS_RE.search(user)
+    label = labels_match.group(1).split(",")[0].strip() if labels_match else None
+
+    target_match = _TARGET_TYPE_RE.search(user)
+    is_ranking = target_match is not None and target_match.group(1) == "ranking"
+    numbers = _ENTITY_NUMERIC_RE.findall(user) if is_ranking else []
+    point = float(numbers[0]) if numbers else 0.0
+
+    half = max(abs(point) * 0.5, 1.0)
+    return json.dumps(
+        {
+            "label": label,
+            "point_forecast": point,
+            "interval": {"level": 0.90, "lo": point - half, "hi": point + half},
+            "evidence": evidence,
+        }
+    )
 
 
 def run(
@@ -79,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
 
     config = Config.from_env()
     client: ModelClient = (
-        MockModelClient(reply=_MOCK_REPLY) if args.mock else HTTPModelClient(config)
+        MockModelClient(reply=_mock_reply) if args.mock else HTTPModelClient(config)
     )
     answer = run(args.task, args.corpus, args.out, client, config.top_k)
     n_claims = sum(len(e["claims"]) for e in answer["entity_predictions"])
