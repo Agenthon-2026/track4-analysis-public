@@ -268,6 +268,31 @@ def test_http_house_endpoint_honors_model_seed_and_auth(monkeypatch):
     assert 0 < timeout <= 60
 
 
+def test_http_house_origin_endpoint_uses_v1_path_and_bearer(monkeypatch):
+    """Harness injects MODEL_ENDPOINT as origin (no /v1); requests must hit /v1/chat/completions."""
+    monkeypatch.setenv("MODEL_ENDPOINT", "http://house-rehearsal.agenthon.internal:8443")
+    monkeypatch.setenv("MODEL_NAME", "pinned-house-model")
+    monkeypatch.setenv("MODEL_TOKEN", "synthetic-test-token")
+    monkeypatch.setenv("QFBENCH_SEED", "42")
+    calls = []
+
+    def request(req, timeout):
+        calls.append((req, timeout))
+        return io.BytesIO(
+            json.dumps({"choices": [{"message": {"content": "{}"}}]}).encode()
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", request)
+    client = HTTPModelClient(Config.from_env())
+    assert client.complete("system", "user") == "{}"
+    req, _timeout = calls[0]
+    assert (
+        req.full_url
+        == "http://house-rehearsal.agenthon.internal:8443/v1/chat/completions"
+    )
+    assert req.headers["Authorization"] == "Bearer synthetic-test-token"
+
+
 @pytest.mark.parametrize(
     "body",
     [
