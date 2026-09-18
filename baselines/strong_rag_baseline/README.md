@@ -56,9 +56,10 @@ Local model example: `ollama serve` + `MODEL_ENDPOINT=http://localhost:11434/v1 
 
 **BM25 only, no dense retrieval** (deviation from the Baseline-3 sketch in `../README.md`): the
 eval sandbox's restricted network cannot fetch embedding weights at run time, so a lexical index
-keeps the agent reproducible everywhere. The binding constraint is build-time vendoring: a dense
-index is permitted if its weights are bundled in the image (`byo-small`/`byo-large` in
-`SUBMISSION_CLI.md`), because nothing can be downloaded at run time. The chunking already
+keeps the agent reproducible everywhere. The binding constraint is build-time vendoring: nothing
+can be downloaded at run time, and bundling embedding weights for a dense index is an additional
+neural checkpoint under the [artifact policy](../../docs/ARTIFACT-POLICY.md), which needs
+organizer approval. The chunking already
 targets the corpus's natural citable units (rendered-table NOTES lines, per-span passages),
 which recovers much of what dense retrieval would add on these corpora.
 
