@@ -459,6 +459,13 @@ def quality_checks(
 
 
 def production_checks(report: dict) -> list[dict]:
+    """Measure production-NLI faithfulness when the report is a production profile.
+
+    Until an approved judge is bound and every run records ``nli_faithfulness``, this
+    check stays UNMEASURED. That state is expected for smoke/G2 work and is the
+    **G3-official** half of the championship ladder — not a license to treat smoke
+    lexical scores as production admission. See ``docs/CHAMPIONSHIP-PLAN.md`` §2.2.
+    """
     rows = report_rows(report)
     values = [row["assessment"].get("nli_faithfulness") for row in rows]
     applied = all(
@@ -534,14 +541,19 @@ def audit(
         for name, reason in (
             (
                 "independent_confirmations",
+                # G3-local once fresh disjoint batches exist; still required by policy
+                # (confirmation_batches=2). Completing confirmations without an approved
+                # judge does not by itself yield overall G3=PASS.
                 "needs two non-overlapping fresh batches with the same frozen pair and judge",
             ),
             (
                 "production_equivalence",
+                # G3-official: organiser-bound until evidence contracts exist.
                 "needs approved judge/runtime and model-service provenance bound to the candidate",
             ),
             (
                 "artifact_eligibility",
+                # G3-official: organiser-bound until evidence contracts exist.
                 "needs cutoff, model-artifact and reproducibility verification",
             ),
         )

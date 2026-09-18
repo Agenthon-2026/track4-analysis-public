@@ -344,6 +344,15 @@ worktrees. [production.py](production.py) validates the official-format specific
 bytes and cache digest, pins offline evaluator loading, and checks each report's judge identity.
 It does not download weights, authorize paid inference or establish organizer approval.
 
+**Scope split (thresholds unchanged).** Treat confirmation work as two tracks aligned with
+[CHAMPIONSHIP-PLAN.md](../../docs/CHAMPIONSHIP-PLAN.md) §2.2:
+
+- **G3-local:** disjoint fresh event batches and the quality side of confirmation audits — owned
+  by the team once inventory exists. Completing this alone does **not** flip overall G3 to PASS.
+- **G3-official:** `production_faithfulness`, runtime equivalence and artifact eligibility — stay
+  UNMEASURED until an approved judge/spec and evidence contracts exist. Do not lower
+  `confirmation_batches` or substitute smoke faithfulness for production NLI.
+
 Before either confirmation runs, use `confirmations` with its sealing budget option to bind the
 selection and both confirmation registrations. Sealing rechecks G1/G2, the fixed versions, seeds,
 policy, identical production judge and disjoint event/input identities. The combined budget uses
