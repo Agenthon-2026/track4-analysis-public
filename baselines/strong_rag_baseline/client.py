@@ -1,5 +1,16 @@
-"""OpenAI-compatible house client with a deadline shared by every entity."""
+"""OpenAI-compatible house client with a deadline shared by every entity.
 
+The eval sandbox's only egress is the organizer-hosted House route. The harness
+injects ``MODEL_ENDPOINT`` as the route **origin** (``scheme://host:port``) and the
+OpenAI-compatible API is served under ``/v1``, so the request goes to
+``$MODEL_ENDPOINT/v1/chat/completions`` with ``Authorization: Bearer $MODEL_TOKEN``
+(see the hub's ``docs/HOUSE-MODEL.md``, "Calling the House route"). Locally, any
+server speaking that protocol works (ollama, llama.cpp, vLLM) whether its URL is
+given with or without the ``/v1`` suffix, and tests inject :class:`MockModelClient`
+— same interface, canned replies, no network.
+
+Determinism: temperature 0 and a fixed ``seed`` are sent on every request.
+"""
 from __future__ import annotations
 
 import json
@@ -17,6 +28,18 @@ from .config import Config, HOUSE_MAX_OUTPUT_TOKENS, HOUSE_MAX_REQUESTS
 
 class ModelBudgetExceeded(RuntimeError):
     """No further HTTP request may be made within this unit."""
+
+
+def chat_completions_url(model_endpoint: str) -> str:
+    """The chat-completions URL for an endpoint given with or without ``/v1``.
+
+    The harness injects the route origin (no path); local servers are often
+    configured as ``http://host:port/v1``. Both resolve to ``.../v1/chat/completions``.
+    """
+    base = model_endpoint.rstrip("/")
+    if not base.endswith("/v1"):
+        base += "/v1"
+    return base + "/chat/completions"
 
 
 class ModelClient(Protocol):
@@ -109,7 +132,7 @@ class HTTPModelClient:
         if official and self.config.model_token:
             headers["Authorization"] = f"Bearer {self.config.model_token}"
         request = urllib.request.Request(
-            f"{endpoint}/chat/completions",
+            chat_completions_url(endpoint),
             data=json.dumps(payload).encode("utf-8"),
             headers=headers,
             method="POST",

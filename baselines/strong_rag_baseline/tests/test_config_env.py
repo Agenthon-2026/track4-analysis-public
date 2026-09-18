@@ -52,11 +52,11 @@ def test_model_id_survives_as_local_dev_fallback(
 
 
 def test_harness_endpoint_and_seed_override_developer_settings(monkeypatch):
-    monkeypatch.setenv("MODEL_ENDPOINT", "https://house.example/v1/")
+    monkeypatch.setenv("MODEL_ENDPOINT", "https://house.example")
     monkeypatch.setenv("QFBENCH_SEED", "1234")
     monkeypatch.setenv("T4_SEED", "77")
     config = Config.from_env()
-    assert config.model_endpoint == "https://house.example/v1"
+    assert config.model_endpoint == "https://house.example"
     assert config.seed == 1234
     assert config.local_llama is False
 
@@ -71,3 +71,24 @@ def test_invalid_budget_settings_cannot_disable_deadlines(monkeypatch):
     assert 0 < config.timeout_s <= 60
     assert config.max_retries == 3
     assert config.top_k == 10
+
+
+def test_chat_completions_url_adds_v1_for_the_injected_origin() -> None:
+    """The harness injects the route origin; the API lives under /v1."""
+    from strong_rag_baseline.client import chat_completions_url
+
+    assert (
+        chat_completions_url("http://house-rehearsal.agenthon.internal:8443")
+        == "http://house-rehearsal.agenthon.internal:8443/v1/chat/completions"
+    )
+    assert (
+        chat_completions_url("http://house-rehearsal.agenthon.internal:8443/")
+        == "http://house-rehearsal.agenthon.internal:8443/v1/chat/completions"
+    )
+
+
+def test_chat_completions_url_keeps_a_local_v1_base() -> None:
+    from strong_rag_baseline.client import chat_completions_url
+
+    assert chat_completions_url("http://localhost:11434/v1") == "http://localhost:11434/v1/chat/completions"
+    assert chat_completions_url("http://localhost:11434/v1/") == "http://localhost:11434/v1/chat/completions"

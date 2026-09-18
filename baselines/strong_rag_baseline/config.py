@@ -35,7 +35,7 @@ def _bounded_env(name: str, default: float, lo: float, hi: float) -> float:
 
 @dataclass(frozen=True)
 class Config:
-    model_endpoint: str
+    model_endpoint: str  # House route origin as injected (http://host:port); a local http://host/v1 also works
     model_token: str | None
     model_id: str
     seed: int  # forwarded to the model AND used for any local tie-breaking
