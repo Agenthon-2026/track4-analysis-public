@@ -166,11 +166,11 @@ computed at all. Verified by running the scorer on each case.
 
 The image-size row remains the published recommendation and rejection policy; it is not a
 verified automatically enforced image-size quota. The image-layer limit is a different resource.
-See the [image submission guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.4.2/docs/IMAGE-SUBMISSIONS.md)
+See the [image submission guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.4.3/docs/IMAGE-SUBMISSIONS.md)
 for anonymous public pulls and organizer-confirmed private mirrors.
 
 For CPU, memory and GPU settings, read the unit card and the
-[Development runtime guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.4.2/docs/DEVELOPMENT-RUNTIME.md).
+[Development runtime guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.4.3/docs/DEVELOPMENT-RUNTIME.md).
 The `api` category does not remove a card's GPU grant for permitted local code or authorize
 an additional model server. The unit clock includes container creation and any required pull;
 the ingestion stage has a separate 12-hour clock across sequential units, and scoring has its
@@ -188,19 +188,13 @@ proxy, where every connection is logged and becomes the audit artifact for verif
 calls; this is enforced by rule and audit. Data/text cutoffs are unchanged and still enforced by
 the harness (`g2`).
 
-**Development availability.** The initial Development opening is planned for House/API submissions. BYO adapter serving is planned for a later opening, with a separate availability announcement. The published BYO adapter eligibility and descriptor categories remain valid. This page is not an opening announcement.
-
-**Two modes, one contract.**
-
-1. **API mode** (`category = "api"`): your agent calls the organizer-hosted model endpoint
-   (`$MODEL_ENDPOINT`); your contribution is the prompts, harness, system prompts, agents and permitted local numerical artifacts.
-   No participant API keys are injected and none exist (policy 2026-08-04) — the house endpoint
-   is the only reachable model.
-2. **BYO mode** (`category = "byo-large"` or `"byo-small"`, retained as legacy names): ship
-   one LoRA adapter, rank ≤ 64, for the organizer-served base model. Full model weights,
-   full fine-tuning, and a submission-run model server are not permitted. Your code calls the
-   supplied `MODEL_ENDPOINT` with `MODEL_NAME`, which names your adapter for that run.
-   See [adapter-only BYO](SUBMISSION_CLI.md#adapter-only-byo) for packaging and serving rules.
+**One mode, one contract.** `category = "api"`: your agent calls the organizer-hosted model
+endpoint (`$MODEL_ENDPOINT`); your contribution is the prompts, harness, system prompts, agents
+and permitted local numerical artifacts. No participant API keys are injected and none exist
+(policy 2026-08-04) — the house endpoint is the only reachable model. **Bring-your-own models
+and adapters are not part of this competition** (ruling of 2026-09-18): the former
+`byo-large` / `byo-small` categories are invalid since toolkit 2.4.3, and an upload that still
+carries one is held by the organizer's intake and never run.
 
 At scoring time the container sees: `HTTP_PROXY`/`HTTPS_PROXY` pointing at the audited proxy,
 `MODEL_ENDPOINT` set to the origin of the organizer-hosted House route (e.g. `http://model:8443`,
@@ -209,7 +203,7 @@ bearer, and `QFBENCH_NETWORK=restricted`; see [Calling the House route](https://
 without the eval network fall back to `--network=none`, so your agent must degrade gracefully
 (still emit a schema-valid `answer.json`) when model APIs are unreachable.
 
-**Local numerical artifacts.** The [Track 4 artifact policy](docs/ARTIFACT-POLICY.md) defines permitted non-neural models, calibration parameters and corpus-only retrieval assets, with disclosure and cutoff requirements. It does not authorize additional neural checkpoints or establish BYO service availability.
+**Local numerical artifacts.** The [Track 4 artifact policy](docs/ARTIFACT-POLICY.md) defines permitted non-neural models, calibration parameters and corpus-only retrieval assets, with disclosure and cutoff requirements. It does not authorize additional neural checkpoints.
 
 **Offline training.** The [Track 4 training policy](docs/TRAINING-POLICY.md) permits eligible
 external training data within the existing artifact categories, requires cutoff-aware fitting,
@@ -218,12 +212,11 @@ pretraining. Evaluation inputs and citations stay within the official task and f
 
 **Reproducibility.** Model versions must be pinned (dated snapshots), the training cutoff of
 every model must be disclosed in submission metadata, and temperature/seed pinned where the API
-supports it. API-based entries are verified statistically (bootstrap-CI overlap on rerun); BYO
-entries bit-reproducibly.
+supports it. Entries are verified statistically (bootstrap-CI overlap on rerun).
 
 **House API allocation.** See the [model-API rules](SUBMISSION_CLI.md#rules-for-model-api-use-restricted-mode)
 for the allowance of 1,000,000 input tokens per unit, selected House request limits, and
-accounting for failed or retried requests. These House limits do not define a BYO request limit. Platform availability and deployed enforcement will be
+accounting for failed or retried requests. Platform availability and deployed enforcement will be
 announced separately.
 
 **Leaderboard.** One board; every entry is tagged with its category, models used (pinned
@@ -256,9 +249,9 @@ a ceiling rather than a floor (`nemoguardrails` and `nvidia-nat` both pin `<3.14
 Track 4 inherits scoring utilities from the shared toolkit repository. Install them with:
 
 ```bash
-# Pin toolkit v2.4.2 for the current submission commands and model-free fixture.
+# Pin toolkit v2.4.3 for the current submission commands and fixtures.
 # The installed package reports version 2.4.2.
-pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.2#subdirectory=common"
+pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.3#subdirectory=common"
 ```
 
 > **Pin a tag, never a branch.** Installing from a moving ref means your local result and your
@@ -421,7 +414,7 @@ non-rankable; it checks the interface, not prediction accuracy or production fai
 # baselines/requirements.txt is comments only -- the minimal baseline is standard library
 # by design -- so this line installs nothing. It is here because step 4 and step 5 need the
 # shared toolkit, which brings jsonschema with it.
-pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.2#subdirectory=common"
+pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.3#subdirectory=common"
 
 # 2. Run the RAG baseline
 python baselines/baseline_agent.py \

@@ -1,6 +1,6 @@
 ## Executive summary (read this first)
 
-Track 4 permits the limited local numerical artifacts below alongside the approved House model. The adapter-only rule governs language-model serving; it does not prohibit fitted non-neural prediction or calibration parameters. All fitting, selection and calibration data must meet the task's information cutoff and the existing training policy. Additional neural checkpoints require separate organizer approval. Evaluation inputs and citations remain limited to the supplied task and official frozen corpus. This clarification does not change scoring, resource grants, the descriptor schema or BYO service availability.
+Track 4 permits the limited local numerical artifacts below alongside the approved House model. Language-model serving is the House model only (bring-your-own models and adapters are not part of this competition, ruling of 2026-09-18); that rule does not prohibit fitted non-neural prediction or calibration parameters. All fitting, selection and calibration data must meet the task's information cutoff and the existing training policy. Additional neural checkpoints require separate organizer approval. Evaluation inputs and citations remain limited to the supplied task and official frozen corpus. This clarification does not change scoring, resource grants or the descriptor schema.
 
 ## Permitted local artifacts
 

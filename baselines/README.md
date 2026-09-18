@@ -71,9 +71,9 @@ composite score: ineligible.
    frozen corpus using hybrid BM25 + dense retrieval (BAAI/bge-m3 or equivalent).
 2. Passes the top-K retrieved passages plus the entity's tabular features to an LLM with a
    structured prompt. In official scoring, the reader calls the organizer-hosted
-   `$MODEL_ENDPOINT` with the supplied `$MODEL_NAME`. BYO means one LoRA adapter on the
-   organizer's base, not a bundled reader checkpoint or a model server. Vendor model APIs
-   are not permitted. See [adapter-only BYO](../SUBMISSION_CLI.md#adapter-only-byo).
+   `$MODEL_ENDPOINT` with the supplied `$MODEL_NAME`. A bundled reader checkpoint or a model
+   server is not permitted (bring-your-own models and adapters are not part of this
+   competition), and neither are vendor model APIs. See [`SUBMISSION_CLI.md`](../SUBMISSION_CLI.md).
 3. Generates a prediction (label or numeric estimate), a claim sentence, and a citation for each
    material statement.
 4. A **calibration head** (a small quantile regression model) converts the LLM's raw confidence
@@ -220,8 +220,8 @@ filter is not the same as being eligible.
 ## Open-weights references for offline experiments
 
 The model list below supports offline experiments and local checks. The reader alternatives
-are not models you may bundle for official BYO scoring; that path follows the
-[adapter-only contract](../SUBMISSION_CLI.md#adapter-only-byo).
+are not models you may bundle for official scoring: every scored submission reads through the
+House model (see [`SUBMISSION_CLI.md`](../SUBMISSION_CLI.md)).
 
 | Role | Model | Licence | Notes |
 |------|-------|---------|-------|
