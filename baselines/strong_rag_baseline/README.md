@@ -35,6 +35,16 @@ The image recipe is [`baselines/Dockerfile`](../Dockerfile), with
 [`analyze.py`](../analyze.py) consuming the harness verb. It contains runtime Python modules;
 test fixtures and development model weights are excluded. From the repository root:
 
+| Var | Meaning | Default |
+|---|---|---|
+| `MODEL_ENDPOINT` | House route origin (harness-injected at scoring time); requests go to `$MODEL_ENDPOINT/v1/chat/completions`. A local URL already ending in `/v1` also works | — (required unless `--mock`) |
+| `MODEL_NAME` | model id sent in the request — this is what the harness injects (see `SUBMISSION_CLI.md`, container environment contract) | empty |
+| `MODEL_ID` | local-dev fallback for `MODEL_NAME`; read only when `MODEL_NAME` is unset | empty |
+| `MODEL_TOKEN` | per-unit bearer credential (harness-injected at scoring time); sent as `Authorization: Bearer` on every request. Optional locally | none |
+| `T4_SEED` | seed forwarded to the model | `20260731` |
+| `T4_TOP_K` | retrieved chunks per entity | `10` |
+| `T4_MODEL_TIMEOUT_S` / `T4_MODEL_RETRIES` | per-call timeout / retry count | `60` / `3` |
+
 ```bash
 docker build --platform linux/amd64 -f baselines/Dockerfile -t t4-analyze:latest baselines
 bash baselines/smoke_image.sh /tmp/t4-out
@@ -95,17 +105,18 @@ do not invent a placeholder model entry. This baseline's default endpoint path i
 
 | Module | Role |
 |---|---|
-| `indexer.py` | Reads corpus text and creates chunks with exact character offsets |
-| `retriever.py` | BM25 retrieval over dated, embargo-eligible documents |
+| `indexer.py` | One chunk per corpus span; global offsets follow the scorer's join-with-space convention, so every chunk is citation-ready as-is |
+| `retriever.py` | Pure-Python Okapi BM25; docs with missing or post-cutoff `doc_date` dropped before scoring; ties break by `(doc_id, span_start)` |
 | `evidence.py` | Entity-bound excerpts, explicit series-column tables, evidence IDs and provenance ledger |
 | `tables.py` | Strict dated columns, source-bound historical differences and explicit percent-to-bps conversion |
-| `client.py` | HTTP model calls through the configured endpoint, plus a mock client for tests |
+| `client.py` | stdlib HTTP client for `$MODEL_ENDPOINT/v1/chat/completions` with the `MODEL_TOKEN` bearer, plus a mock client for tests |
 | `prompts.py` | Task-aware JSON schemas and requests for predictions with evidence IDs |
+| `span_finder.py` | Locates quotes as exact substrings (length-preserving curly-quote normalization); never trusts model offsets |
 | `schema.py` | Reads target type, allowed labels, units and interval requirements |
 | `quantities.py` | Validates finite numeric targets, units and declared domains |
 | `reasoner.py` | Deterministic fallback that interprets evidence in the task's target context |
-| `agent.py` | Coordinates model inference, evidence validation and fallback |
-| `formatter.py` | Assembles and validates the complete entity roster |
+| `agent.py` | Orchestrates model inference, evidence validation and fallback |
+| `formatter.py` | Final answer assembly + hard self-check (spans resolve, intervals complete, `notes` is an object) |
 | `validation.py` | Shared checks for predictions, citations, dates and entity coverage |
 | `local_server.py` | Optional development-only llama.cpp launcher |
 
