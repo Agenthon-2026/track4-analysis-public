@@ -166,11 +166,11 @@ computed at all. Verified by running the scorer on each case.
 
 The image-size row remains the published recommendation and rejection policy; it is not a
 verified automatically enforced image-size quota. The image-layer limit is a different resource.
-See the [image submission guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.4.3/docs/IMAGE-SUBMISSIONS.md)
+See the [image submission guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.4.4/docs/IMAGE-SUBMISSIONS.md)
 for anonymous public pulls and organizer-confirmed private mirrors.
 
 For CPU, memory and GPU settings, read the unit card and the
-[Development runtime guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.4.3/docs/DEVELOPMENT-RUNTIME.md).
+[Development runtime guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.4.4/docs/DEVELOPMENT-RUNTIME.md).
 The `api` category does not remove a card's GPU grant for permitted local code or authorize
 an additional model server. The unit clock includes container creation and any required pull;
 the ingestion stage has a separate 12-hour clock across sequential units, and scoring has its
@@ -249,9 +249,9 @@ a ceiling rather than a floor (`nemoguardrails` and `nvidia-nat` both pin `<3.14
 Track 4 inherits scoring utilities from the shared toolkit repository. Install them with:
 
 ```bash
-# Pin toolkit v2.4.3 for the current submission commands and fixtures.
-# The installed package reports version 2.4.2.
-pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.3#subdirectory=common"
+# Pin toolkit v2.4.4 for the current submission commands and fixtures.
+# The installed package reports version 2.4.4.
+pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.4#subdirectory=common"
 ```
 
 > **Pin a tag, never a branch.** Installing from a moving ref means your local result and your
@@ -414,7 +414,7 @@ non-rankable; it checks the interface, not prediction accuracy or production fai
 # baselines/requirements.txt is comments only -- the minimal baseline is standard library
 # by design -- so this line installs nothing. It is here because step 4 and step 5 need the
 # shared toolkit, which brings jsonschema with it.
-pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.3#subdirectory=common"
+pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.4#subdirectory=common"
 
 # 2. Run the RAG baseline
 python baselines/baseline_agent.py \
