@@ -111,7 +111,7 @@ jobs:
           # install warns "PyTorch was not found" and the tokenizer-only install suffices.
           # Pinned deliberately: an unpinned ruff jumped 0.15.21 -> 0.16.0 mid-cycle in July
           # and reddened every track's lint job on untouched code. Same trap applies here.
-          pip install "pytest==9.1.1" "transformers==5.15.0"
+          pip install "pytest==9.1.1" "transformers==5.15.0" "setuptools==84.0.0"
           pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.3#subdirectory=common"
       # `python -m pytest` for the same sys.path reason as the firewall job above.
       - name: Scorer + judge tests

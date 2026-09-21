@@ -44,4 +44,6 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["qfbench2_track_analysis"]
+# The production factory imports faithfulness.judge. Keep this explicit so wheels carry that
+# implementation without pulling in tests, serving files, units or model caches.
+packages = ["qfbench2_track_analysis", "faithfulness"]
