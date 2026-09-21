@@ -214,9 +214,12 @@ pretraining. Evaluation inputs and citations stay within the official task and f
 every model must be disclosed in submission metadata, and temperature/seed pinned where the API
 supports it. Entries are verified statistically (bootstrap-CI overlap on rerun).
 
-**House API allocation.** See the [model-API rules](SUBMISSION_CLI.md#rules-for-model-api-use-restricted-mode)
-for the allowance of 1,000,000 input tokens per unit, selected House request limits, and
-accounting for failed or retried requests. Platform availability and deployed enforcement will be
+**House API allocation.** The model budget is **requests per unit**: **25 admitted requests per
+unit**, with **at most 4,000 output tokens per request**, both counted by the House route. There
+is no per-unit token allowance — the earlier figure of 1,000,000 input plus 100,000 output tokens
+per unit is withdrawn and nothing replaces it. See the
+[model-API rules](SUBMISSION_CLI.md#rules-for-model-api-use-restricted-mode) for the accounting of
+failed or retried requests. Platform availability and deployed enforcement will be
 announced separately.
 
 **Leaderboard.** One board; every entry is tagged with its category, models used (pinned
@@ -485,6 +488,8 @@ open-internet dependency and degrades gracefully when model APIs are unreachable
 Development runs through **October 12, 2026**. The joint **Final + Verification phase runs
 October 13–25, 2026**. Each team makes **one final submission per track**; organizers perform
 verification within that same phase, with no separate participant Verification submission.
+If two Final submissions finish this track with the same ranking score, the tie is broken in
+favour of the one uploaded earlier.
 Registration and Development close together on October 12, 2026 at **23:59 Anywhere on Earth (AoE, UTC−12)**. The joint Final + Verification phase closes on October 25, 2026 at **23:59 AoE**. Other competition dates and task/data cutoffs are unchanged.
 
 At the participant Development opening, Track 4 allows **5 uploads per team per day**
