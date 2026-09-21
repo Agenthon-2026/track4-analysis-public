@@ -250,7 +250,7 @@ Track 4 inherits scoring utilities from the shared toolkit repository. Install t
 
 ```bash
 # Pin toolkit v2.4.4 for the current submission commands and fixtures.
-# The installed package reports version 2.4.2.
+# The installed package reports version 2.4.4.
 pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.4#subdirectory=common"
 ```
 
