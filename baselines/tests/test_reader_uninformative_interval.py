@@ -24,8 +24,9 @@ def test_without_evidence_the_interval_does_not_assert_a_narrow_range() -> None:
 
 def test_the_uninformative_width_scales_with_the_entitys_own_magnitudes() -> None:
     """A basis-point unit and a ratio unit must not get the same width."""
-    small = predict_entity({"latest_published_mom_pct": 0.18}, "")
-    large = predict_entity({"prior_year_q_eps": 4.33}, "")
+    # Exercise arbitrary numeric magnitudes with synthetic field names and values.
+    small = predict_entity({"fixture_scale": 1.0}, "")
+    large = predict_entity({"fixture_scale": 50.0}, "")
     assert (large["hi"] - large["lo"]) > (small["hi"] - small["lo"])
 
 

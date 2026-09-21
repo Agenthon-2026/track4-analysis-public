@@ -47,6 +47,8 @@ def _entry(*, target_type: str, labels: object = ...) -> RosterEntry:
     raw = copy.deepcopy(load_fixture(FIXTURE))["roster"]["expected_units"][0]
     params = dict(raw["scoring_params"])
     params["target_type"] = target_type
+    # Absence is deliberate in the legacy/local compatibility controls below.
+    params.pop("labels", None)
     if labels is not ...:
         params["labels"] = labels
     return RosterEntry(

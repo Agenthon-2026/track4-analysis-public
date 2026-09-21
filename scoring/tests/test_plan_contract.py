@@ -88,6 +88,9 @@ def _entry(**overrides: object) -> RosterEntry:
     """
     raw = copy.deepcopy(load_fixture(FIXTURE))["roster"]["expected_units"][0]
     params = dict(raw["scoring_params"])
+    # This helper also constructs legacy/malformed entries without parsing C1. Specify any
+    # vocabulary in the test itself rather than inheriting a newer golden fixture's labels.
+    params.pop("labels", None)
     params.update(overrides)
     return RosterEntry(
         unit_handle=raw["unit_handle"],
@@ -156,7 +159,7 @@ def test_track_fours_weight_names_are_exactly_c1s() -> None:
 
 # --- the adapter ---------------------------------------------------------------------------------
 def test_a_well_formed_analysis_entry_adapts() -> None:
-    plan = _plan(target_type="classification")
+    plan = _plan()
     handle = plan.expected_handles[0]
     roster, params = trusted_inputs_for(plan, handle)
     assert roster.count == 2
@@ -185,7 +188,7 @@ def test_the_shipped_c1_analysis_fixture_is_scoreable() -> None:
 
 
 def test_an_unknown_handle_is_an_organizer_fault_not_a_skip() -> None:
-    plan = _plan(target_type="classification")
+    plan = _plan()
     with pytest.raises(T4OrganizerFault, match="not in the C1 roster"):
         trusted_inputs_for(plan, "u-00000000")
 
