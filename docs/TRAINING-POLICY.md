@@ -7,13 +7,14 @@ citations remain limited to the supplied task and official frozen corpus. A narr
 applies only to the general-purpose pretraining of explicitly approved Nemotron base revisions.
 This clarification changes no scoring formula, judge, threshold, submission schema or category.
 
-**Policy revision: 2026-09-10.1.** Read alongside the [submission interface](../SUBMISSION_CLI.md)
+**Policy revision: 2026-09-18.1.** Read alongside the [submission interface](../SUBMISSION_CLI.md)
 and [competition data rules](https://www.agenthon.net/rules/).
 
 ## External training and historical cutoffs
 
-For example, an approved adapter may be trained offline using a public, licensed dataset whose
-features and labels were available before every task cutoff where it will be used. A label
+For example, a permitted local predictor or interval calibrator may be fitted offline using a
+public, licensed dataset whose features and labels were available before every task cutoff where
+it will be used. A label
 released after a task's cutoff is forbidden for that task even if it is used only to choose a
 model or calibrate a prediction interval.
 
@@ -26,19 +27,20 @@ when the value or revised release became available later.
 At evaluation time, use only the supplied task and official frozen corpus as inputs and
 evidence. Offline-training permission does not authorize importing external documents into
 the inference corpus, citing them, fetching data, or storing task-answer lookups. It does not
-expand the allowed model or artifact categories: the [adapter-only BYO contract](../SUBMISSION_CLI.md#adapter-only-byo)
-continues to apply.
+expand the allowed model or artifact categories: language-model serving is the House model only
+(bring-your-own models and adapters are not part of this competition, ruling of 2026-09-18), and
+the [artifact policy](ARTIFACT-POLICY.md) governs which local artifacts are permitted.
 
 ## Required provenance record
 
 Keep an `ARTIFACT_PROVENANCE.md` record with the source used to build your image, available
 for organizer verification. Record sources, dataset versions, licenses and first-availability
 dates. Identify the data used separately for fitting/adaptation, model selection and interval
-calibration, together with the immutable model/adapter revisions or checksums. Explain how
+calibration, together with the immutable revisions or checksums of every learned artifact. Explain how
 the selected artifact respects each task cutoff where it is used.
 
-Use the existing model disclosure in `submission.json` and keep base and adapter training
-histories clear in the provenance record. Do not invent descriptor fields or placeholder
+Use the existing model disclosure in `submission.json` and keep the training history of every
+learned artifact clear in the provenance record. Do not invent descriptor fields or placeholder
 model entries. The provenance record is reviewed documentation, not a new descriptor key;
 the current descriptor validator does not establish whether training data were eligible.
 Do not add a sidecar to the descriptor upload ZIP unless the upload instructions request it.

@@ -496,3 +496,175 @@ def test_guard4_catches_prose_spellings_not_just_key_equals_value() -> None:
         f"network = \"{env['network']}\"."
     )
     assert not _environment_offenders([("<faithful>", faithful)], env)
+
+
+# --------------------------------------------------------------------------- #
+# 5. No participant-facing document offers a bring-your-own model path        #
+# --------------------------------------------------------------------------- #
+# Would have caught the 2026-09-18 residue at authoring time. The ruling of 2026-09-18 withdrew
+# bring-your-own entirely, and the withdrawal landed in README.md's category section, in
+# SUBMISSION_CLI.md and in docs/ARTIFACT-POLICY.md's summary -- while three documents went on
+# offering the adapter contract in the same tree, ARTIFACT-POLICY.md contradicting itself between
+# its line 3 and its line 18. That document is the one a participant was pointed at when they
+# asked this exact question. A reader who found the offer first read a rule that no longer existed.
+#
+# The rule is about OFFERS, not mentions, so the guard reads SENTENCES: a sentence that raises
+# bring-your-own, BYO or a LoRA/adapter submission must also carry the withdrawal. An earlier
+# version of this guard listed offer phrasings instead, and a review showed it green on
+# "BYO model submissions are welcome." and on "Submit a LoRA adapter on the approved base." --
+# a guard that patrols the four spellings the last incident happened to use.
+#
+# SUBMISSION_CLI.md keeps a `### Adapter-only BYO` section whose body says "Withdrawn", because
+# outside links point at that anchor; that section carries a marker and stays green. A LINK whose
+# target is the withdrawn anchor is an offender on its own -- a withdrawal cannot produce one.
+
+#: Policy documents that are not in DOC_FILES (the other guards read numbers and paths these two
+#: do not carry) but which state participant-facing rules. Same fail-closed rule.
+POLICY_DOCS = [
+    "docs/ARTIFACT-POLICY.md",
+    "docs/TRAINING-POLICY.md",
+]
+
+#: Directories whose markdown is unit content, not participant-facing prose.
+_BYO_SKIP_DIRS = {"units", "units_archived", "corpus", ".git", ".github"}
+
+#: A link whose target is the withdrawn section. The heading itself is not a link, so the
+#: withdrawal stub does not match; `[text](SUBMISSION_CLI.md#adapter-only-byo)` does.
+_BYO_LINK_RE = re.compile(r"\]\([^)]*#adapter-only-byo\)", re.I)
+
+#: Raises a participant-supplied model path. ``adaptation`` does not match ``adapter``.
+_BYO_TERM_RE = re.compile(r"\bBYO\b|\bbyo-(?:small|large)\b|bring[-\s]your[-\s]own|\bLoRA\b|(?<![_a-z])adapters?\b", re.I)
+
+#: The withdrawal, in the spellings the ruling and the toolkit actually use. Deliberately narrow:
+#: an unrelated "invalid" or "held" elsewhere in the sentence must NOT clear a BYO offer, which is
+#: how the first version let ``Use `byo-large`; an invalid descriptor is rejected`` through.
+_BYO_WITHDRAWAL_RES = [
+    re.compile(r"not\s+part\s+of\s+this\s+competition", re.I),
+    re.compile(r"\bwithdrawn\b", re.I),
+    re.compile(r"no\s+longer\s+accepts?", re.I),
+    re.compile(r"(?:are|is)\s+invalid|invalid\s+since", re.I),
+    re.compile(r"has\s+not\s+accepted", re.I),
+    re.compile(r"held\s+by\s+the\s+organi[sz]er", re.I),
+    re.compile(r"there\s+is\s+no\s+(?:LoRA|adapter)", re.I),
+    re.compile(r"not\s+(?:authorized|permitted|available)", re.I),
+]
+
+#: Sentence boundary: a terminator, or a blank line / heading / table row / list bullet, because
+#: prose here is hard-wrapped and a sentence routinely spans lines. A colon is NOT a boundary:
+#: the withdrawal is regularly the lead-in and the detail follows it ("...are not part of this
+#: competition (ruling of 2026-09-18): no LoRA adapter path, no in-image model weights path").
+_BYO_SENTENCE_RE = re.compile(r"(?<=[.!?])\s+|\n\s*\n|\n(?=\s*(?:[#|*+-]|\d+\.))")
+#: `>` is deliberately absent above: a hard-wrapped blockquote is one sentence per several
+#: `> ` lines, and splitting on it separated a withdrawal lead-in from its own detail.
+
+
+def _byo_patrolled_docs() -> list[tuple[str, str]]:
+    """DOC_FILES and POLICY_DOCS by name (fail-closed), plus every other markdown file.
+
+    Discovered rather than listed for the rest: the residue sat in two documents that no guard
+    named, so a list is the failure mode this guard exists to prevent. A new document is
+    patrolled the day it lands.
+    """
+    _require(DOC_FILES, "patrolled document(s)")
+    _require(POLICY_DOCS, "policy document(s)")
+    rels = list(dict.fromkeys(DOC_FILES + POLICY_DOCS))
+    for path in sorted(REPO.rglob("*.md")):
+        parts = path.relative_to(REPO).parts
+        if any(part in _BYO_SKIP_DIRS or part.startswith(".") for part in parts[:-1]):
+            continue
+        rel = path.relative_to(REPO).as_posix()
+        if rel not in rels:
+            rels.append(rel)
+    return [(rel, (REPO / rel).read_text(encoding="utf-8")) for rel in rels]
+
+
+def _byo_offer_offenders(docs: list[tuple[str, str]]) -> list[str]:
+    offenders = []
+    for rel, text in docs:
+        for match in _BYO_LINK_RE.finditer(text):
+            offenders.append(f"{rel}: link to the withdrawn section -- {match.group(0)}")
+        chunks = [" ".join(chunk.split()) for chunk in _BYO_SENTENCE_RE.split(text)]
+        for index, flat in enumerate(chunks):
+            if not flat or not _BYO_TERM_RE.search(flat):
+                continue
+            # A heading names its section; the withdrawal is the sentence under it, so read the
+            # two together. `### Adapter-only BYO` over a body that says "Withdrawn" is not an
+            # offer, and a heading that offers with no withdrawal below it still fails.
+            scope = flat
+            if flat.startswith("#"):
+                scope = " ".join(filter(None, chunks[index : index + 2]))
+            if any(pattern.search(scope) for pattern in _BYO_WITHDRAWAL_RES):
+                continue
+            offenders.append(f"{rel}: {flat[:120]!r}")
+    return offenders
+
+
+def test_no_document_offers_a_bring_your_own_model_path() -> None:
+    offenders = _byo_offer_offenders(_byo_patrolled_docs())
+    assert not offenders, (
+        "participant-facing documents raise a bring-your-own model or adapter path without the "
+        "withdrawal, which the ruling of 2026-09-18 made binding (every submission runs against "
+        "the House model; the descriptor has not accepted `byo-*` since toolkit 2.4.3):\n"
+        + "\n".join(sorted(set(offenders)))
+    )
+
+
+def test_guard5_catches_its_own_exemplars() -> None:
+    """The residue lines this guard was written for, and the five a review showed it missing."""
+    exemplars = {
+        "README firewall paragraph": (
+            "BYO model submissions follow the "
+            "[adapter-only contract](SUBMISSION_CLI.md#adapter-only-byo)."
+        ),
+        "artifact policy": (
+            "For an approved LoRA submission, the existing one-adapter/base/rank contract "
+            "still applies, and the serving route must separately be available."
+        ),
+        "training policy link": (
+            "It does not expand the allowed model or artifact categories: the "
+            "[adapter-only BYO contract](../SUBMISSION_CLI.md#adapter-only-byo) "
+            "continues to apply."
+        ),
+        "training policy example": (
+            "For example, an approved adapter may be trained offline using a public, "
+            "licensed dataset."
+        ),
+        "provenance asks for adapter revisions": (
+            "Identify the data used for calibration, together with the immutable "
+            "model/adapter revisions or checksums."
+        ),
+        "provenance asks for adapter histories": (
+            "Use the existing model disclosure and keep base and adapter training histories "
+            "clear in the provenance record."
+        ),
+        "baseline README": (
+            "Declare pinned model and adapter versions and their training cutoffs."
+        ),
+        "starter-pack wording": "Your submission ships only a LoRA adapter, rank <= 64.",
+        # The five the review found green on the phrase-list version of this guard.
+        "unrelated 'held' clears the mention": (
+            "Use `byo-small`; adapters are held to the same limits as api."
+        ),
+        "unrelated 'invalid' clears the mention": (
+            "Use `byo-large`; an invalid descriptor is rejected at intake."
+        ),
+        "plain offer": "BYO model submissions are welcome.",
+        "offer by permission": "You may bring your own model as a LoRA adapter of rank 32.",
+        "offer by instruction": "Submit a LoRA adapter on the approved base.",
+    }
+    for label, doc in exemplars.items():
+        assert _byo_offer_offenders([("<exemplar>", doc)]), (
+            f"guard 5 does not catch its own exemplar ({label}); it would be cited as proof "
+            "of a class it cannot detect"
+        )
+    # ...and the withdrawal itself, which names the same words, must stay green.
+    clean = (
+        "### Adapter-only BYO\n\n"
+        "Withdrawn. This section described a LoRA-adapter option; by the ruling of 2026-09-18 "
+        "bring-your-own models and adapters are not part of this competition, and the "
+        "descriptor no longer accepts the `byo-*` categories. Every submission runs against "
+        "the House model through `MODEL_ENDPOINT`.\n\n"
+        "The former `byo-large` / `byo-small` categories are invalid since toolkit 2.4.3, and "
+        "an upload that still carries one is held by the organizer's intake and never run.\n"
+    )
+    assert not _byo_offer_offenders([("<clean>", clean)])

@@ -1,6 +1,6 @@
 ## Executive summary (read this first)
 
-Track 4 permits the limited local numerical artifacts below alongside the approved House model. Language-model serving is the House model only (bring-your-own models and adapters are not part of this competition, ruling of 2026-09-18); that rule does not prohibit fitted non-neural prediction or calibration parameters. All fitting, selection and calibration data must meet the task's information cutoff and the existing training policy. Additional neural checkpoints require separate organizer approval. Evaluation inputs and citations remain limited to the supplied task and official frozen corpus. This clarification does not change scoring, resource grants or the descriptor schema.
+Track 4 permits the limited local numerical artifacts below alongside the approved House model. Language-model serving is the House model only (bring-your-own models and adapters are not part of this competition, ruling of 2026-09-18); that rule does not prohibit fitted non-neural prediction or calibration parameters. All fitting, selection and calibration data must meet the task's information cutoff and the existing training policy. Additional neural checkpoints other than language models require separate organizer approval; an additional language model has no approval route. Evaluation inputs and citations remain limited to the supplied task and official frozen corpus. This clarification does not change scoring, resource grants or the descriptor schema.
 
 ## Permitted local artifacts
 
@@ -11,11 +11,12 @@ Track 4 permits the limited local numerical artifacts below alongside the approv
 | Calibration parameters, thresholds, covariance estimates and prediction-interval calibration | Permitted under the same cutoff for fitting, selection and calibration. A pre-cutoff training set does not authorize later calibration labels. |
 | Tokenizer-only vocabularies/configuration, static dictionaries and numerical lookup tables | Permitted when otherwise eligible under the data rules, without additional neural weights or stored task answers. |
 | BM25 or other non-neural indexes used for evidence retrieval | May index the supplied task's official frozen corpus. This does not authorize importing external documents or citing an external inference corpus. |
-| Neural forecasting/classification models, neural embeddings, neural rerankers or additional language models | Require separate express approval; being auxiliary or non-LLM is not automatic eligibility. |
+| Additional language models | Not part of this competition (ruling of 2026-09-18): every submission runs against the House model, and there is no approval route for a second one. |
+| Neural forecasting/classification models, neural embeddings or neural rerankers | Require separate express approval; being auxiliary or non-LLM is not automatic eligibility. |
 
 An unchanged House model combined with these permitted local artifacts uses the API execution mode. Describe every learned local model with the existing `models[]` entry and `access: "local"`; include the House disclosure when used. Pure code and static assets belong in provenance documentation rather than fictitious model entries. This policy does not create a new model-free Track 4 category.
 
-For an approved LoRA submission, the existing one-adapter/base/rank contract still applies, and the serving route must separately be available. Full language-model weights, a second language model or adapter and a participant-run language-model server are not authorized by this clarification.
+There is no LoRA or adapter submission path: bring-your-own models and adapters are not part of this competition (ruling of 2026-09-18), and the descriptor has not accepted the `byo-*` categories since toolkit 2.4.3. Full language-model weights, a second language model or adapter and a participant-run language-model server are not authorized by this clarification either.
 
 ## Provenance and task cutoffs
 

@@ -240,7 +240,7 @@ uniformly MIT.
 Cache the weights needed for offline experiments and local judge checks before running them.
 Official scoring cannot fetch HuggingFace Hub weights: those domains are outside the restricted
 network allowlist, and `TRANSFORMERS_OFFLINE=1` is set in the scoring environment. The official
-reader uses the organizer endpoint. Declare pinned model and adapter versions and their training
+reader uses the organizer endpoint. Declare pinned model versions and their training
 cutoffs as required by [the submission contract](../SUBMISSION_CLI.md#rules-for-model-api-use-restricted-mode).
 
 ---

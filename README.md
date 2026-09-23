@@ -479,7 +479,8 @@ organizer's audited proxy to the organizer-hosted `$MODEL_ENDPOINT` and nothing 
 vendor model APIs are refused. Retrieval indices, dependencies, and other permitted resources
 must be baked into the Docker image or available from the read-only corpus
 mount. Vendor-side tools (web search, code execution, retrieval) must be disabled in API calls.
-BYO model submissions follow the [adapter-only contract](SUBMISSION_CLI.md#adapter-only-byo).
+Bring-your-own models and adapters are not part of this competition (ruling of 2026-09-18) —
+see [submission categories](SUBMISSION_CLI.md#submission-categories-agent-tracks-only).
 Test locally with `docker run --network=none` before submitting to confirm your agent has no
 open-internet dependency and degrades gracefully when model APIs are unreachable.
 
