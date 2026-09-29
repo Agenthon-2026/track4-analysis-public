@@ -19,7 +19,7 @@ waits on the staging `$MODEL_ENDPOINT`.
 it quotes a verbatim slice of the top retrieved excerpt, so the quote grounds to a real span
 through the same path a real model's quote takes, and every row comes back with at least one
 grounded claim. What it does not do is forecast — `point_forecast` is `0.0` except on ranking
-units, where a constant vector would be the degenerate answer of public #47. Use it to prove
+units, where a constant vector would be the degenerate answer. Use it to prove
 retrieval → prompt → parse → ground → assemble works end to end; do not read its numbers.
 
 ## Run

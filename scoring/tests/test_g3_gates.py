@@ -30,7 +30,7 @@ import pytest
 from qfbench2_common.failure_labels import FailureLabel
 
 from qfbench2_track_analysis.codes import T4ParticipantFailure, T4Reason
-from qfbench2_track_analysis.scoring import _g3_domain_semantics, hydrate
+from qfbench2_track_analysis.scoring import ClaimReport, _g3_domain_semantics, hydrate
 
 from .synthetic import (
     POST_CUTOFF_DOC,
@@ -74,17 +74,18 @@ def test_faithfulness_is_scored_for_bundled_citation_claims(
     assert judge.calls[0][0] == SUPPORTING_TEXT
 
 
-def test_unsupported_prediction_still_fails_the_gate(tmp_path: pathlib.Path) -> None:
-    """The fix must not make the gate vacuous in the other direction."""
-    judge = StubJudge(("something else entirely",))
+def test_a_contradicted_claim_still_costs_the_unit(tmp_path: pathlib.Path) -> None:
+    """The fix must not make the check vacuous in the other direction. 5.2.0: a claim the cited
+    passage contradicts is false and the unit's factor drops with it (no refusal)."""
+    judge = StubJudge((), contradicted_premises=(SUPPORTING_TEXT,))
     ctx = _ctx(tmp_path, answer_for(entities=ROSTER, doc_id=PRE_CUTOFF_DOC), judge)
 
-    with pytest.raises(T4ParticipantFailure) as excinfo:
-        _g3_domain_semantics(ctx)
-
-    assert excinfo.value.reason is T4Reason.EVIDENCE_UNSUPPORTED
-    assert excinfo.value.label is FailureLabel.T4_UNFAITHFUL_CITATION
+    assert _g3_domain_semantics(ctx).passed
+    report = ctx["_claim_report"]
+    assert isinstance(report, ClaimReport)
+    assert report.contradicted_count == report.claim_count > 0
     assert ctx["_faithfulness"] == 0.0
+    assert ctx["_faithfulness_factor"] == 0.0
 
 
 def test_embargo_resolves_the_date_from_the_corpus_not_the_answer(

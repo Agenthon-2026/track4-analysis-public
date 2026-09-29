@@ -8,7 +8,11 @@
     "labels": [
       "up",
       "down"
-    ]
+    ],
+    "label_assertions": {
+      "up": "will be revised up in the agency's next published estimate for that reference month, relative to the latest estimate published on or before 2024-09-30",
+      "down": "will be revised down in the agency's next published estimate for that reference month, relative to the latest estimate published on or before 2024-09-30"
+    }
   },
   "prompt": "Using ONLY the frozen evidence corpus (real-time ALFRED vintage tables for six U.S. macro series and one BLS benchmark announcement, all as known on or before the 2024-09-30 cutoff), predict for each row whether the statistical agency's NEXT published estimate of the given reference month's value - in the post-cutoff release identified by resolving_release_date - will be revised UP or DOWN relative to latest_precutoff_estimate (the value as published on latest_precutoff_vintage, given). Reason from each series' revision history in the vintage tables (persistent revision direction, typical revision size, annual-update schedules) and the BLS preliminary benchmark announcement. For each row also give a point forecast of the revised value and a 90% interval. Support every prediction with citations to passages in the frozen corpus. Do NOT use post-cutoff vintages or the current (fully revised) series; they are absent by design.",
   "cutoff_date": "2024-09-30",

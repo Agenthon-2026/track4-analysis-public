@@ -7,8 +7,8 @@
       "path": "card.toml",
       "role": "input",
       "license": "CC-BY-4.0",
-      "sha256": "583d8a15641616a0da18945a033b37c12bfc4b210a976c34c1e2b89398a13ee8",
-      "bytes": 3996,
+      "sha256": "cd0276c9b53d207dca1b15b706c22d8837922eb6a2da7c1245d3189deef18e6c",
+      "bytes": 4266,
       "split": "public-dev",
       "redistributable": true
     },
@@ -31,7 +31,8 @@
       "redistributable": true,
       "cutoff": "2022-07-28",
       "pii_stripped": true,
-      "source": "FederalReserve"
+      "source": "FederalReserve",
+      "shared": true
     },
     {
       "path": "corpus/RATES_SNAPSHOT_20220728.json",
@@ -43,14 +44,15 @@
       "redistributable": true,
       "cutoff": "2022-07-28",
       "pii_stripped": true,
-      "source": "compiled_public_data"
+      "source": "compiled_public_data",
+      "shared": true
     },
     {
       "path": "corpus/manifest.json",
       "role": "input",
       "license": "CC-BY-4.0",
-      "sha256": "23dcd910cee82c19788656b3300be9ec387445abff14e2d18c17c638f82b8b09",
-      "bytes": 1099,
+      "sha256": "4e57539091024b271c5802c650b1ac98eb1932f124db1b39b6e28c9e7f801e9b",
+      "bytes": 1143,
       "split": "public-dev",
       "redistributable": true
     }

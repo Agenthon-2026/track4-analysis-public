@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import json as _json
 import logging
+import math
 import os
 import pathlib
 import time as _time
@@ -72,8 +73,10 @@ __all__ = [
     "ServedNLIJudge",
     "build_judge",
     "build_ensemble_judge",
+    "judged_premise_text",
     "score_claim",
     "AnswerCheck",
+    "ClaimCheck",
     "PredictionCheck",
     "build_unit_context",
     "check_answer",
@@ -178,6 +181,57 @@ DEFAULT_CACHE_DIR: str = "/model-cache"
 #: The label string that the HuggingFace zero-shot-classification pipeline
 #: returns for the entailment class.  Both DeBERTa models use this label.
 DEFAULT_ENTAILMENT_LABEL: str = "entailment"
+
+
+# ---------------------------------------------------------------------------
+# The judged window
+# ---------------------------------------------------------------------------
+
+
+def judged_premise_text(tokenizer: Any, premise: str, hypothesis: str) -> str:
+    """The prefix of `premise` the zero-shot pipeline reads beside `hypothesis`.
+
+    The pipeline tokenises the pair ``[CLS] premise [SEP] hypothesis [SEP]`` with
+    ``truncation="only_first"`` at the tokenizer's ``model_max_length`` (512 for the pinned
+    DeBERTa models), so a long premise is cut and the hypothesis is kept whole. When the pair
+    fits, nothing is cut and `premise` is returned unchanged (the same object). When even an
+    empty premise leaves no room for the hypothesis, the tokenizer refuses with a "too short"
+    error and the pipeline re-tokenises with no truncation, so the judge reads the whole premise;
+    this function mirrors that and returns `premise` unchanged too.
+
+    Otherwise the result is the premise up to the end offset of the last premise token kept, so
+    tokenising the result beside the same hypothesis gives the same tokens the pipeline built.
+    This mirrors ``ZeroShotClassificationPipeline._parse_and_tokenize`` (transformers 5.x): a
+    batch of one pair, special tokens added, ``only_first``, the "too short" fallback.
+
+    TODO(next scorer version): cap the claim's token length so the "too short" fallback, where
+    the judge reads a sequence longer than its window, cannot be reached. Out of scope for 5.1.1.
+    """
+    limit = int(tokenizer.model_max_length)
+    whole = tokenizer(
+        [[premise, hypothesis]], add_special_tokens=True, truncation=False
+    )
+    if len(whole["input_ids"][0]) <= limit:
+        return premise
+    try:
+        kept = tokenizer(
+            [[premise, hypothesis]],
+            add_special_tokens=True,
+            truncation="only_first",
+            return_offsets_mapping=True,
+        )
+    except Exception as exc:  # the pipeline catches exactly this and does not truncate
+        if "too short" in str(exc):
+            return premise
+        raise
+    ends = [
+        end
+        for (_, end), sequence in zip(
+            kept["offset_mapping"][0], kept.sequence_ids(0), strict=True
+        )
+        if sequence == 0
+    ]
+    return premise[: max(ends)] if ends else ""
 
 
 # ---------------------------------------------------------------------------
@@ -369,6 +423,78 @@ class DeBERTaNLIJudge:
 
         return entailment_score
 
+    def judged_premise(self, premise: str, hypothesis: str) -> str:
+        """The prefix of `premise` this member's pipeline actually reads beside `hypothesis`.
+
+        Uses the loaded pipeline's own tokenizer; see :func:`judged_premise_text`. Handing the
+        result back to :meth:`entail` gives the same score as handing it the whole premise,
+        because the pipeline would have cut the premise to exactly this text.
+        """
+        return judged_premise_text(self._load().tokenizer, premise, hypothesis)
+
+    def claim_tokens(self, hypothesis: str) -> int:
+        """How many tokens `hypothesis` takes in this member's window, special tokens excluded
+        (the claim length guard; see `scoring.CLAIM_MAX_JUDGE_TOKENS`)."""
+        return len(
+            self._load().tokenizer(hypothesis, add_special_tokens=False)["input_ids"]
+        )
+
+    def three_way(self, premise: str, hypothesis: str) -> tuple[float, float, float]:
+        """The model's three-way softmax ``(entailment, neutral, contradiction)`` for the pair.
+
+        Scorer 5.2.0. The SAME tensors :meth:`entail` builds: the pipeline's own
+        ``preprocess`` (``[CLS] premise [SEP] hypothesis [SEP]``, ``truncation="only_first"``,
+        the "too short" fallback) and ``forward``; only the normalisation differs. :meth:`entail`
+        is unchanged and keeps its two-way entailment-versus-contradiction normalisation; this
+        method keeps the neutral class, so generic text reads as neutral instead of being forced
+        onto one side. The label order is read from the model config (the two pinned members
+        order their labels differently) and refused if it does not name exactly the three NLI
+        classes. The softmax is taken in float64 over the float32 logits.
+
+        An empty premise or hypothesis returns ``(0.0, 1.0, 0.0)``: nothing is asserted, so
+        nothing is contradicted (``entail`` returns 0.0 for the same inputs).
+        """
+        pipe = self._load()
+        if not premise.strip() or not hypothesis.strip():
+            return 0.0, 1.0, 0.0
+        labels = {
+            int(i): str(name).lower() for i, name in pipe.model.config.id2label.items()
+        }
+        index = {name: i for i, name in labels.items()}
+        if set(index) != {"entailment", "neutral", "contradiction"} or len(labels) != 3:
+            raise RuntimeError(
+                f"DeBERTaNLIJudge[{self.model_id}]: the model's labels {sorted(index)} are not "
+                "exactly entailment / neutral / contradiction, so no three-way probability exists"
+            )
+        outputs = [
+            pipe.forward(inputs)
+            for inputs in pipe.preprocess(
+                premise, candidate_labels=[hypothesis], hypothesis_template="{}"
+            )
+        ]
+        if len(outputs) != 1:
+            raise RuntimeError(
+                f"DeBERTaNLIJudge[{self.model_id}]: one pair produced {len(outputs)} forward passes"
+            )
+        logits = [float(x) for x in outputs[0]["logits"].float().reshape(-1).tolist()]
+        if len(logits) != 3:
+            raise RuntimeError(
+                f"DeBERTaNLIJudge[{self.model_id}]: expected 3 logits, got {len(logits)}"
+            )
+        top = max(logits)
+        exps = [math.exp(v - top) for v in logits]
+        total = sum(exps)
+        probs = [e / total for e in exps]
+        return (
+            probs[index["entailment"]],
+            probs[index["neutral"]],
+            probs[index["contradiction"]],
+        )
+
+    def contradiction(self, premise: str, hypothesis: str) -> float:
+        """The model's three-way P(contradiction) for the pair (see :meth:`three_way`)."""
+        return self.three_way(premise, hypothesis)[2]
+
     def __repr__(self) -> str:
         """Return a concise representation showing the model ID and device."""
         return (
@@ -401,7 +527,10 @@ class ServedNLIJudge:
     so an :class:`EnsembleNLIJudge` composed of ``ServedNLIJudge`` instances
     averages client-side exactly as the local ensemble does. The server only
     ever returns a single model's two-way entailment score; no scoring logic
-    lives behind the endpoint.
+    lives behind the endpoint. It therefore has no ``contradiction``: scorer
+    5.2.0's contradiction question needs the three-way softmax, so a served
+    ensemble is marked "contradiction not applied" (non-rankable) in the local
+    preview, and refused in a rankable run.
 
     Wire protocol (JSON over HTTP)::
 
@@ -432,6 +561,35 @@ class ServedNLIJudge:
     token: str | None = None
     timeout_s: float = 30.0
     max_retries: int = 3
+    #: Where the member's TOKENIZER is read from, for `judged_premise` (5.1.2). The weights stay
+    #: behind the endpoint; the window is computed client-side with the same pinned tokenizer.
+    cache_dir: str | None = None
+    revision: str | None = None
+    _tokenizer: Any = field(default=None, init=False, repr=False, compare=False)
+
+    def judged_premise(self, premise: str, hypothesis: str) -> str:
+        """The prefix of `premise` the served model reads beside `hypothesis` (5.1.2).
+
+        The server runs the same zero-shot pipeline as :class:`DeBERTaNLIJudge`, so the window
+        is the member tokenizer's; see :func:`judged_premise_text`. Without this a served
+        ensemble had no window, and the figure check read text the judge never saw.
+        """
+        return judged_premise_text(self._load_tokenizer(), premise, hypothesis)
+
+    def _load_tokenizer(self) -> Any:
+        if self._tokenizer is None:
+            from transformers import AutoTokenizer
+
+            self._tokenizer = AutoTokenizer.from_pretrained(
+                self.model_id, revision=self.revision, cache_dir=self.cache_dir
+            )
+        return self._tokenizer
+
+    def claim_tokens(self, hypothesis: str) -> int:
+        """How many tokens `hypothesis` takes in the served member's window."""
+        return len(
+            self._load_tokenizer()(hypothesis, add_special_tokens=False)["input_ids"]
+        )
 
     def entail(self, premise: str, hypothesis: str) -> float:
         """Return the served model's two-way entailment score.
@@ -523,7 +681,7 @@ def build_judge(
         effective_model_ids = model_ids if model_ids is not None else NLI_MODEL_IDS
         token = os.environ.get(ENV_JUDGE_TOKEN) or None
         judges = [
-            ServedNLIJudge(model_id=mid, url=url, token=token)
+            ServedNLIJudge(model_id=mid, url=url, token=token, cache_dir=cache_dir)
             for mid in effective_model_ids
         ]
         logger.info(
@@ -532,7 +690,7 @@ def build_judge(
             len(judges),
             effective_model_ids,
         )
-        return EnsembleNLIJudge(judges=judges)
+        return _windowed(judges)
     raise RuntimeError(
         f"{ENV_JUDGE_BACKEND}={backend!r} is not a valid backend "
         "(expected 'local' or 'served')"
@@ -552,7 +710,8 @@ def build_ensemble_judge(
     """Instantiate an :class:`EnsembleNLIJudge` from one or more DeBERTa models.
 
     Creates one :class:`DeBERTaNLIJudge` per entry in *model_ids*, wraps them
-    in :class:`EnsembleNLIJudge`, and returns the ensemble.  This is the
+    in the windowed :class:`EnsembleNLIJudge` the gate uses (the hub ensemble plus
+    ``judged_premise``, scorer 5.1.2), and returns the ensemble.  This is the
     recommended way to obtain a judge object for use with
     :func:`~scoring.scoring.build_verifier` or for pre-submission checks via
     :func:`score_claim`.
@@ -614,7 +773,19 @@ def build_ensemble_judge(
         effective_model_ids,
     )
 
-    return EnsembleNLIJudge(judges=judges)
+    return _windowed(judges)
+
+
+def _windowed(judges: list[Any]) -> EnsembleNLIJudge:
+    """The ensemble the gate uses: the hub's `entail` plus `judged_premise` (5.1.2).
+
+    Local and served builders return this, not the plain hub ensemble, so the local check cuts
+    each cited passage to the judge's window exactly as the production gate does. The gate
+    refuses a model ensemble without a window (`scoring.judged_passage`).
+    """
+    from qfbench2_track_analysis.judge_factory import WindowedEnsembleNLIJudge
+
+    return WindowedEnsembleNLIJudge(judges)
 
 
 # ---------------------------------------------------------------------------
@@ -743,55 +914,61 @@ def build_unit_context(unit_dir: str | os.PathLike[str]) -> dict[str, Any]:
     return ctx
 
 
-class _MemoizingJudge:
-    """Answers each ``(premise, hypothesis)`` pair exactly once.
-
-    :func:`check_answer` consults the judge twice over the same pairs: once per roster entity for
-    the rows it prints, and once over the whole list inside the shared ``citation_faithfulness``,
-    which owns the aggregate. Memoizing makes the second pass free, so the check can reuse the
-    shared primitive rather than re-implement it, and the printed rows cannot drift from the number
-    the gate computes. NLI inference is the expensive part of this script; each pair is one call.
-    """
-
-    def __init__(self, inner: NLIJudge) -> None:
-        self._inner = inner
-        self.cache: dict[tuple[str, str], float] = {}
-
-    def entail(self, premise: str, hypothesis: str) -> float:
-        key = (premise, hypothesis)
-        cached = self.cache.get(key)
-        if cached is None:
-            cached = float(self._inner.entail(premise, hypothesis))
-            self.cache[key] = cached
-        return cached
-
-    def best_for(self, hypothesis: str) -> float:
-        """The highest score any premise scored against *hypothesis*, over the calls made."""
-        return max(
-            (v for (_, h), v in self.cache.items() if h == hypothesis), default=0.0
-        )
-
-
 @dataclass(frozen=True)
-class PredictionCheck:
-    """One roster entity's result: the question the judge was asked, and its answer."""
+class ClaimCheck:
+    """One claim's result (scorer 5.2.0): the claim text (the judge's hypothesis), its status
+    (``neutral``, ``contradicted``, ``unanchored`` or ``malformed``), its best three-way
+    P(contradiction) over the passages it cites, and the reasons it is false (empty when it is
+    not)."""
 
     entity_id: str
-    #: The canonical hypothesis — derived from the SUBMITTED prediction, never authored by it.
-    hypothesis: str
+    claim: str
+    status: str
     score: float
-    supported: bool
+    reasons: tuple[str, ...] = ()
+
+    @property
+    def false(self) -> bool:
+        return bool(self.reasons)
+
+
+#: Kept under its old name so callers written against the earlier per-entity shape still import.
+PredictionCheck = ClaimCheck
 
 
 @dataclass(frozen=True)
 class AnswerCheck:
-    """Aggregate result of :func:`check_answer` over one ``answer.json``."""
+    """Aggregate result of :func:`check_answer` over one ``answer.json`` (scorer 5.2.0).
 
-    predictions: tuple[PredictionCheck, ...]
+    `faithfulness` is the share of claims that are not false; `penalty_factor` is what the unit's
+    score is multiplied by, the soft floor ``(1 - F/(F + min(T, 3E))) ** penalty_k`` (equal to
+    ``faithfulness ** penalty_k`` while T is at most 3E, a cap over the whole unit). There is no pass/fail any more: a
+    unit is refused only for the structural errors `check_answer` raises.
+    """
+
+    claims: tuple[ClaimCheck, ...]
     faithfulness: float
-    gate_pass: bool
-    #: The denominator. Always the trusted roster size, never the number of claims submitted.
+    penalty_factor: float
+    false_count: int
+    #: The roster size, printed beside the claim count so the two are never confused.
     roster_count: int
+    #: False when the judge cannot answer the contradiction question (the served backend returns only two-way
+    #: entailment): only the deterministic reasons were checked, so the preview is NOT a production reading.
+    contradiction_applied: bool = True
+
+    @property
+    def rankable(self) -> bool:
+        """Whether this preview checked everything the production penalty checks."""
+        return self.contradiction_applied
+
+    @property
+    def predictions(self) -> tuple[ClaimCheck, ...]:
+        """Alias for `claims`, kept for callers written against the earlier per-entity shape."""
+        return self.claims
+
+    @property
+    def claim_count(self) -> int:
+        return len(self.claims)
 
 
 def check_answer(
@@ -802,33 +979,37 @@ def check_answer(
     """Run the unit's evidence semantics over *answer_data* locally, as the real gate runs them.
 
     *ctx* is a hydrated context from :func:`build_unit_context`. The steps mirror
-    ``qfbench2_track_analysis.scoring._g3_domain_semantics`` and are assembled from the same public
-    parts, so there is no second implementation of the gate to drift:
+    ``qfbench2_track_analysis.scoring._g3_domain_semantics`` and are the same public functions,
+    so there is no second implementation of the gate to drift:
 
-    1. ``align_predictions`` against the **trusted roster**, which fixes the denominator. The
-       previous local check counted ``_collect_claims(answer)``: padding one entity with seven
-       copies of a claim moved the local number from 1 to 7 while the gate's stayed at 1.
+    1. ``align_predictions`` against the **trusted roster**: a missing, duplicated or unknown
+       entity fails here exactly as it fails the gate.
     2. ``CorpusIndex.embargo_report`` over every citation. Unresolved, undated and post-cutoff are
-       all violations (fail-closed since 2026-08-22), and each raises here as it raises there.
-    3. ``prediction_claims(aligned, ctx["_hypothesis_spec"])``: the hypothesis handed to the judge
-       is the **canonical prediction sentence** built from the submitted label / point forecast /
-       rank / interval plus the trusted task schema. It is never ``claim["text"]``. That rule was
-       deleted from the scorer in #28, and it is the reason this rewrite exists: measured on a
-       synthetic unit, an answer with ``label="miss"``, ``point_forecast=-99.0`` and interval
-       ``[-100, -98]`` whose prose accurately described a real corpus passage scored
-       **faithfulness 1.0 / gate_pass True** locally while the real gate scored **0.0**. A
-       pre-check that is wrong in that direction is worse than no pre-check.
-    4. ``qfbench2_common.scoring.faithfulness.citation_faithfulness`` for the aggregate — the same
-       shared primitive the gate calls, given the same claim list and the same trusted lookup.
+       all violations, and each raises here as it raises there.
+    3. The document-level entity labels: a claim citing a document the manifest does not label
+       with the citing entity (or mark shared) is false (5.2.0; it used to refuse the unit).
+    4. ``evaluate_claims``: the numeric backstop, then the judge with each cited passage as
+       premise and the participant's **claim text** as hypothesis, asked for its three-way
+       P(contradiction). The unit's score is multiplied by the soft floor
+       ``(1 - F/(F + min(T, 3E))) ** penalty_k`` (F false claims, T the others, E the roster count).
+
+    The scorer additionally records a ``prediction_relevance`` diagnostic (the passage against a
+    sentence built from the submitted values); it is not part of admission and this check does
+    not compute it.
 
     Raises :class:`~qfbench2_track_analysis.codes.T4ParticipantFailure` for anything the gate
     refuses before faithfulness is reached, so a local run fails on the same submissions and for
     the same stated reason.
     """
-    from qfbench2_common.scoring import faithfulness as F
     from qfbench2_track_analysis.alignment import align_predictions
     from qfbench2_track_analysis.codes import T4ParticipantFailure, T4Reason
-    from qfbench2_track_analysis.hypothesis import prediction_claims
+    from qfbench2_track_analysis.scoring import (
+        _entity_admits,
+        _entity_bound_citations,
+        claim_interval_scored,
+        evaluate_claims,
+        unit_entity_names,
+    )
 
     params = ctx["_params"]
     roster = ctx["_roster"]
@@ -857,33 +1038,37 @@ def check_answer(
             observed_count=report.checked,
         )
 
-    claims = prediction_claims(aligned, ctx["_hypothesis_spec"])
-    lookup = corpus.lookup()
-    memo = _MemoizingJudge(judge)
-    tau = float(params.tau_citation)
+    _entity_bound_citations(corpus, aligned)
 
-    # Per-entity rows, each computed by the SHARED primitive over a one-element list, so the row
-    # and the aggregate cannot be computed by different code. The judge calls are memoized, so
-    # asking twice costs one inference.
-    checks: list[PredictionCheck] = []
-    for entity_id, claim in zip(aligned.entity_ids, claims, strict=True):
-        hypothesis = str(claim["text"])
-        supported = F.citation_faithfulness([claim], lookup, memo, tau=tau) >= 1.0
-        checks.append(
-            PredictionCheck(
-                entity_id=entity_id,
-                hypothesis=hypothesis,
-                score=memo.best_for(hypothesis),
-                supported=supported,
-            )
+    verdicts = evaluate_claims(
+        aligned,
+        corpus.lookup(),
+        judge,
+        target_type=params.target_type,
+        interval_scored=claim_interval_scored(ctx),
+        contradiction_bar=float(params.contradiction_bar),
+        entity_admits=_entity_admits(corpus),
+        entity_names=unit_entity_names(ctx["_task"]),
+    )
+    checks = tuple(
+        ClaimCheck(
+            entity_id=v.entity_id,
+            claim=v.text,
+            status=v.status,
+            score=v.score,
+            reasons=v.reasons,
         )
-
-    phi = float(F.citation_faithfulness(claims, lookup, memo, tau=tau))
+        for v in verdicts.verdicts
+    )
     return AnswerCheck(
-        predictions=tuple(checks),
-        faithfulness=phi,
-        gate_pass=phi >= float(params.faithfulness_threshold),
+        claims=checks,
+        faithfulness=float(verdicts.faithfulness),
+        penalty_factor=verdicts.penalty_factor(
+            float(params.penalty_k), entity_count=roster.count
+        ),
+        false_count=verdicts.false_count,
         roster_count=roster.count,
+        contradiction_applied=verdicts.contradiction_applied,
     )
 
 
@@ -1016,16 +1201,8 @@ if __name__ == "__main__":
         roster_count = unit_ctx["_roster"].count
         parsed_claims = len(_collect_claims(answer_data))
         print(
-            f"\nScoring {roster_count} prediction(s) from {args.answer!r} "
-            f"against unit {unit_ctx['unit_dir'].name!r}"
-        )
-        # The denominator is the roster, not the prose. Printed side by side because the two
-        # numbers differing is normal and used to be invisible: the old check counted claims,
-        # so padding an entity with copies of one claim raised the local figure and moved the
-        # gate's not at all.
-        print(
-            f"({parsed_claims} participant claim(s) parsed; the faithfulness denominator is "
-            f"the trusted roster: {roster_count})"
+            f"\nScoring {parsed_claims} claim(s) for {roster_count} roster entit(y/ies) from "
+            f"{args.answer!r} against unit {unit_ctx['unit_dir'].name!r}"
         )
         print("-" * 60)
 
@@ -1047,19 +1224,33 @@ if __name__ == "__main__":
             print(f"\nGATE: FAIL ({failure.code.value}) — {failure}")
             raise SystemExit(1) from failure
 
-        for check in result.predictions:
-            gate_status = "PASS" if check.supported else "FAIL"
-            print(f"  {check.entity_id}: {check.score:.4f} [{gate_status}]")
-            # Printed in full, not truncated: the interval clause is the half a participant
-            # most often has not realised the judge is being asked about.
-            print(f"    hypothesis: {check.hypothesis!r}")
+        for check in result.claims:
+            verdict = "FALSE: " + ", ".join(check.reasons) if check.false else "ok"
+            print(
+                f"  {check.entity_id}: P(contradiction) {check.score:.4f} [{check.status}] {verdict}"
+            )
+            # The hypothesis IS the claim. `unanchored` means the claim states figures that
+            # appear in none of the passages it cites, and the judge was not asked about it.
+            print(f"    claim: {check.claim[:200]!r}")
         print(
-            f"\nFaithfulness (fraction of supported predictions): "
-            f"{result.faithfulness:.4f}"
+            f"\nFalse claims: {result.false_count} of {result.claim_count}; "
+            f"faithfulness factor (multiplies the unit's score): {result.penalty_factor:.4f}"
         )
-        print(f"GATE: {'PASS' if result.gate_pass else 'FAIL'}")
-        if not result.gate_pass:
-            raise SystemExit(1)
+        if not result.contradiction_applied:
+            print(
+                "Contradiction check: NOT APPLIED. This judge (the served backend) returns only two-way "
+                "entailment, so only the deterministic reasons (wrong entity, out of range, malformed, "
+                "unanchored) were checked. This preview is NOT rankable; run the local ensemble for the "
+                "full check."
+            )
+        # Scorer 5.2.0: faithfulness is a per-claim penalty, not a gate. Reaching this line means
+        # nothing structural refused the answer, so the unit is admitted and scored times the
+        # factor above; the verdict line keeps the CLI's PASS/FAIL contract for callers.
+        print(
+            f"GATE: PASS (admitted; faithfulness factor {result.penalty_factor:.4f}"
+            + ("" if result.rankable else "; contradiction NOT applied, not rankable")
+            + ")"
+        )
 
     else:
         # Built-in synthetic test

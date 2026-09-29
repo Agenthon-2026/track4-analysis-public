@@ -13,7 +13,11 @@
       "split": "public-dev",
       "cutoff": "2024-09-30",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "DGORDER_2024-07_20241025",
+        "DGORDER_2024-08_20241025"
+      ]
     },
     {
       "path": "corpus/ALFRED_HOUST_VINTAGES_20240930.json",
@@ -25,7 +29,10 @@
       "split": "public-dev",
       "cutoff": "2024-09-30",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "HOUST_2024-07_20241018"
+      ]
     },
     {
       "path": "corpus/ALFRED_INDPRO_VINTAGES_20240930.json",
@@ -37,7 +44,11 @@
       "split": "public-dev",
       "cutoff": "2024-09-30",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "INDPRO_2024-07_20241017",
+        "INDPRO_2024-08_20241017"
+      ]
     },
     {
       "path": "corpus/ALFRED_PAYEMS_VINTAGES_20240930.json",
@@ -49,7 +60,12 @@
       "split": "public-dev",
       "cutoff": "2024-09-30",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "PAYEMS_2024-07_20241004",
+        "PAYEMS_2024-08_20241004",
+        "PAYEMS_2024-08_20241101"
+      ]
     },
     {
       "path": "corpus/ALFRED_PI_VINTAGES_20240930.json",
@@ -61,7 +77,11 @@
       "split": "public-dev",
       "cutoff": "2024-09-30",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "PI_2024-07_20241031",
+        "PI_2024-08_20241127"
+      ]
     },
     {
       "path": "corpus/ALFRED_RSAFS_VINTAGES_20240930.json",
@@ -73,7 +93,11 @@
       "split": "public-dev",
       "cutoff": "2024-09-30",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "RSAFS_2024-07_20241017",
+        "RSAFS_2024-08_20241115"
+      ]
     },
     {
       "path": "corpus/BLS_CES_PRELIM_BENCHMARK_20240821.json",
@@ -85,7 +109,8 @@
       "split": "public-dev",
       "cutoff": "2024-09-30",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "shared": true
     }
   ]
 }

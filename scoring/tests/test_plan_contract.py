@@ -37,7 +37,11 @@ from qfbench2_common.contracts import (
 )
 from qfbench2_common.contracts.fixtures import DEV_KEY_ID, DEV_SEED, load_fixture
 
+import json
+import pathlib
+
 from qfbench2_track_analysis.alignment import TARGET_TYPES, align_predictions
+from qfbench2_track_analysis.judge_factory import build_smoke_judge
 from qfbench2_track_analysis.codes import (
     T4OrganizerFault,
     T4ParticipantFailure,
@@ -54,12 +58,26 @@ from qfbench2_track_analysis.scoring import (
     DOMAIN_MAX,
     DOMAIN_MIN,
     ScoringParams,
+    UnitOutcome,
     clip_to_domain,
+    score_unit,
 )
 
-from .synthetic import answer_for  # noqa: E402
+from .synthetic import (
+    SUPPORTING_TEXT,
+    StubJudge,
+    answer_for,
+    build_unit,
+    outcome_for,
+    write_naive_answer,
+)
 
-FIXTURE = "c1/analysis_final.expanded.json"
+#: Track-4 scorer 5.1.0 (2026-09-24) moved W from -0.27 to 0.0, so the contract is checked against the
+#: hub's 5.1.0 TEST FIXTURE. The frozen <= 5.0.0 fixture (`c1/analysis_final.expanded.json`) is kept
+#: byte-for-byte in the hub and pinned there; `test_the_frozen_pre_5_1_plan_no_longer_matches` below
+#: shows it now disagrees with this scorer, which is why it is not the fixture under test.
+FIXTURE = "c1/analysis_final.scorer-5.1.0.expanded.json"
+FROZEN_PRE_5_1 = "c1/analysis_final.expanded.json"
 
 
 def _plan(**overrides: object) -> EvaluationPlan:
@@ -226,7 +244,7 @@ def test_unexpected_weight_names_are_refused_by_c1_and_by_the_adapter() -> None:
 
 
 def test_a_public_commitment_cannot_be_scored_against() -> None:
-    """The public commitment carries counts and digests. Iterating it as a roster is the A01 shape."""
+    """The public commitment carries counts and digests. Iterating it as a roster must be refused."""
     raw = copy.deepcopy(load_fixture(FIXTURE))
     raw["roster"].pop("expected_units")
     plan = EvaluationPlan(_resign(raw))
@@ -235,9 +253,110 @@ def test_a_public_commitment_cannot_be_scored_against() -> None:
         trusted_inputs_for(plan, "u-644dc0d6eda4da5f")
 
 
+# --- scorer 5.1.0: W = 0.0, and the interval_leg flag reaches a plan-driven run -------------------
+def test_the_frozen_pre_5_1_plan_no_longer_matches() -> None:
+    """Control for the re-point above: the old plan's W is -0.27, this scorer's floor is 0.0."""
+    old = EvaluationPlan(load_fixture(FROZEN_PRE_5_1))
+    assert old.failure_score_for("schema_invalid") == pytest.approx(-0.27)
+    assert old.failure_score_for("schema_invalid") != pytest.approx(DOMAIN_MIN)
+
+
+_ENTS = ("ent-0001", "ent-0002")
+
+
+def _plan_driven(
+    tmp_path: pathlib.Path, *, plan_leg: object, card_leg: str | None
+) -> UnitOutcome:
+    """Score a synthetic 0/1-truth classification unit through a signed plan (C1 unit 0)."""
+    raw = copy.deepcopy(load_fixture(FIXTURE))
+    params = raw["roster"]["expected_units"][0]["scoring_params"]
+    assert params["target_type"] == "classification"
+    params.pop("interval_leg", None)
+    if "labels" in params:
+        params["labels"] = ["beat", "miss"]
+    if plan_leg is not None:
+        params["interval_leg"] = plan_leg
+    plan = EvaluationPlan(_resign(raw))
+    handle = plan.expected_handles[0]
+
+    unit = build_unit(tmp_path, entities=_ENTS, with_outcome=False)
+    card = unit / "card.toml"
+    text = card.read_text(encoding="utf-8")
+    # The plan's params are the trusted source; the card must agree with them on every key it has.
+    text = text.replace("tau_citation           = 0.5", "tau_citation           = 0.6")
+    if card_leg is not None:
+        text = text.replace(
+            "tau_citation           = 0.6\n",
+            f"tau_citation           = 0.6\ninterval_leg           = {card_leg}\n",
+        )
+    card.write_text(text, encoding="utf-8")
+    outcome = outcome_for(_ENTS)
+    for row, y in zip(outcome["outcomes"], (1.0, 0.0)):
+        row["y"] = y
+    (unit / "reference").mkdir(exist_ok=True)
+    (unit / "reference" / "outcome.json").write_text(
+        json.dumps(outcome), encoding="utf-8"
+    )
+    write_naive_answer(unit, _ENTS, target_type="classification")
+    answer = answer_for(_ENTS, lo=-0.05, hi=0.05)
+    for row, label in zip(answer["entity_predictions"], ("beat", "miss")):
+        row["label"] = label
+    out = tmp_path / "res"
+    out.mkdir()
+    (out / "answer.json").write_text(json.dumps(answer), encoding="utf-8")
+    _, provenance = build_smoke_judge()
+    return score_unit(
+        {"unit_dir": unit, "output_dir": out, "plan": plan, "unit_handle": handle},
+        judge=StubJudge((SUPPORTING_TEXT,)),
+        judge_provenance=provenance,
+    )
+
+
+def test_a_plan_driven_run_reads_a_flagged_card_and_scores_the_label_only(
+    tmp_path: pathlib.Path,
+) -> None:
+    outcome = _plan_driven(tmp_path, plan_leg=False, card_leg="false")
+    assert outcome.state == "participant_success"
+    assert outcome.diagnostics["interval_quality"] is None
+    assert outcome.score == pytest.approx(
+        1.0
+        * outcome.diagnostics[
+            "predictive_quality"
+        ]  # 5.2.0 "R": the prediction leg alone
+    )
+
+
+def test_a_plan_driven_run_without_the_flag_keeps_the_leg(
+    tmp_path: pathlib.Path,
+) -> None:
+    outcome = _plan_driven(tmp_path, plan_leg=None, card_leg=None)
+    iq = outcome.diagnostics["interval_quality"]
+    assert iq is not None
+    assert outcome.score == pytest.approx(
+        0.7 * outcome.diagnostics["predictive_quality"] + 0.3 * iq
+    )
+
+
+def test_a_flagged_card_under_a_plan_that_omits_the_flag_is_refused(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Fail closed: the plan is the trusted source, and it did not declare the exemption."""
+    with pytest.raises(T4OrganizerFault, match="interval_leg"):
+        _plan_driven(tmp_path, plan_leg=None, card_leg="false")
+
+
+def test_a_non_boolean_interval_leg_is_refused_by_c1_and_by_the_adapter() -> None:
+    with pytest.raises(ContractError, match="interval_leg"):
+        EvaluationPlan(_raw(target_type="classification", interval_leg="false"))
+    with pytest.raises(T4OrganizerFault, match="interval_leg"):
+        scoring_params_from_entry(
+            _entry(target_type="classification", interval_leg="false")
+        )
+
+
 # ------------------------------------------------- C1 1.3.0: the plan entry carries the vocabulary
 #
-# `Agenthon2026#123` / private #89 F1. `align_predictions` refuses a label outside
+# The label-vocabulary check on the platform path. `align_predictions` refuses a label outside
 # `roster.labels`; the local path fills that field from task.json, the platform path built the
 # roster from the plan entry, and the entry carried no vocabulary -- so four of the ten deployed
 # Development units were LABEL_INVALID locally and admissible on the platform. The entry now

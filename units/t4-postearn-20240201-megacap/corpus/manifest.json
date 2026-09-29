@@ -13,7 +13,10 @@
       "split": "public-dev",
       "cutoff": "2024-01-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "AAPL"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000320193_8K_20231102.json",
@@ -25,7 +28,10 @@
       "split": "public-dev",
       "cutoff": "2024-01-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "AAPL"
+      ]
     },
     {
       "path": "corpus/EDGAR_0001018724_10Q_20231027.json",
@@ -37,7 +43,10 @@
       "split": "public-dev",
       "cutoff": "2024-01-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "AMZN"
+      ]
     },
     {
       "path": "corpus/EDGAR_0001018724_8K_20231101.json",
@@ -49,7 +58,10 @@
       "split": "public-dev",
       "cutoff": "2024-01-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "AMZN"
+      ]
     },
     {
       "path": "corpus/EDGAR_0001326801_10Q_20231026.json",
@@ -61,7 +73,10 @@
       "split": "public-dev",
       "cutoff": "2024-01-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "META"
+      ]
     },
     {
       "path": "corpus/EDGAR_0001326801_8K_20240118.json",
@@ -73,7 +88,10 @@
       "split": "public-dev",
       "cutoff": "2024-01-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "META"
+      ]
     }
   ]
 }

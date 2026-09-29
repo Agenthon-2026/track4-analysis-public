@@ -19,7 +19,7 @@ This module makes the three states distinguishable and makes only one of them ra
   production path falls back to it, and no environment variable selects it.
 * Everything else — an exception.
 
-**The model identity is an escalated legal decision (D6), so it is configuration, not code.** What
+**The model identity is a licensing decision, so it is configuration, not code.** What
 is frozen here is the *interface* and the *provenance fields*: model ids, a revision per model, a
 tokenizer digest and a local cache tree digest, in exactly the shape the hub's C4
 ``JudgeRecord`` parses. The default is fail-closed: with no judge artifact configured, the
@@ -38,9 +38,10 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, cast
 
 from qfbench2_common.contracts import JudgeRecord, digest_json
+from qfbench2_common.scoring.faithfulness import EnsembleNLIJudge
 
 from .codes import T4OrganizerFault
 
@@ -50,6 +51,7 @@ __all__ = [
     "JUDGE_MODES",
     "JudgeProvenance",
     "JudgeSpec",
+    "WindowedEnsembleNLIJudge",
     "build_production_judge",
     "build_smoke_judge",
     "compute_cache_tree_digest",
@@ -57,7 +59,7 @@ __all__ = [
 ]
 
 #: Path to the organizer-authored judge artifact specification. There is NO default value: the
-#: model choice is decision D6 (legal + model owner) and an unset variable must refuse, not guess.
+#: model choice is a licensing decision and an unset variable must refuse, not guess.
 ENV_JUDGE_SPEC = "QFBENCH2_T4_JUDGE_SPEC"
 
 #: Root of the pre-staged, read-only model cache whose tree digest is recorded in provenance.
@@ -166,6 +168,73 @@ class JudgeProvenance:
     def to_judge_record(self) -> JudgeRecord:
         """Parse through the hub's C4 type, so a shape drift here fails here and not downstream."""
         return JudgeRecord.from_mapping(self.to_mapping())
+
+
+class _WindowedMember(Protocol):
+    """A member judge that can report the premise text it reads (the local and served judges)."""
+
+    def judged_premise(self, premise: str, hypothesis: str) -> str: ...
+
+
+class WindowedEnsembleNLIJudge(EnsembleNLIJudge):
+    """The hub's ensemble plus `judged_premise`: the premise text every member reads.
+
+    `entail` is the hub's, unchanged (the mean over members); only the window is added, for
+    `scoring.judged_passage`. Members must share one tokenizer window: when they would read
+    different text for one pair there is no single "text the judge read" for the figure check,
+    and that is an organizer fault rather than a choice between members.
+    """
+
+    def judged_premise(self, premise: str, hypothesis: str) -> str:
+        cuts = {
+            cast(_WindowedMember, member).judged_premise(premise, hypothesis)
+            for member in self._judges
+        }
+        if len(cuts) != 1:
+            raise T4OrganizerFault(
+                "the judge ensemble's members read different premise text for one pair (their "
+                "tokenizer windows differ), so there is no single judged window for the figure "
+                "check to read. Pin members that share one tokenizer window."
+            )
+        cut: str = cuts.pop()
+        return cut
+
+    def claim_tokens(self, hypothesis: str) -> int:
+        """The claim's length in tokens, the longest over members (the claim length guard).
+        A member that cannot count is an organizer fault, like a member without a window."""
+        counts: list[int] = []
+        for member in self._judges:
+            method = getattr(member, "claim_tokens", None)
+            if method is None:
+                raise T4OrganizerFault(
+                    f"judge ensemble member {type(member).__name__} cannot count claim tokens, "
+                    "which the claim length guard needs"
+                )
+            counts.append(int(method(hypothesis)))
+        if not counts:
+            raise T4OrganizerFault("the judge ensemble has no members")
+        return max(counts)
+
+    def contradiction(self, premise: str, hypothesis: str) -> float:
+        """The mean over members of each member's three-way P(contradiction) (scorer 5.2.0).
+
+        `entail` is untouched; this is a separate question asked of the same forward pass. Every
+        member must answer it: an ensemble with a member that cannot (a served member exposes
+        only `entail`) has no ensemble contradiction probability, and that is an organizer fault
+        rather than an average over whichever members happen to answer.
+        """
+        if not self._judges:
+            raise T4OrganizerFault("the judge ensemble has no members")
+        values: list[float] = []
+        for member in self._judges:
+            method = getattr(member, "contradiction", None)
+            if method is None:
+                raise T4OrganizerFault(
+                    f"judge ensemble member {type(member).__name__} exposes no three-way "
+                    "contradiction probability, which the 5.2.0 faithfulness penalty needs"
+                )
+            values.append(float(method(premise, hypothesis)))
+        return sum(values) / len(values)
 
 
 #: The smoke judge's provenance uses a digest of a fixed, well-known string rather than a real one.
@@ -287,8 +356,6 @@ def build_production_judge(
 
 def _default_production_builder(spec: JudgeSpec, cache_dir: str) -> Any:
     """Load the pinned ensemble inside the organizer-fault construction boundary."""
-    from qfbench2_common.scoring.faithfulness import EnsembleNLIJudge
-
     from faithfulness.judge import DeBERTaNLIJudge
 
     members = [
@@ -304,7 +371,7 @@ def _default_production_builder(spec: JudgeSpec, cache_dir: str) -> Any:
     # DeBERTa judges retain their lazy-loading behavior.
     for member in members:
         member._load()
-    return EnsembleNLIJudge(members)
+    return WindowedEnsembleNLIJudge(members)
 
 
 class LexicalSmokeJudge:
@@ -320,8 +387,6 @@ class LexicalSmokeJudge:
 
 def build_smoke_judge() -> tuple[Any, JudgeProvenance]:
     """The separately named non-rankable factory. Always `judge_mode="smoke"`."""
-    from qfbench2_common.scoring.faithfulness import EnsembleNLIJudge
-
     judge = EnsembleNLIJudge([LexicalSmokeJudge()])
     provenance = JudgeProvenance(
         judge_mode="smoke",

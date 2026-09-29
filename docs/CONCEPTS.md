@@ -163,7 +163,12 @@ A **citation** in Track 4 is a precise reference to a specific passage in a spec
 - `claim`: the sentence the agent is asserting, in its own words.
 
 The scoring pipeline resolves the character offsets to extract the actual passage text, then
-checks whether that passage entails the claim.
+checks whether that passage entails the claim. Offsets must name a real slice of the document
+(`0 <= span_start < span_end <=` the document's length); a citation whose offsets do not is not
+clamped, it names no passage and supports nothing (scorer 5.1.1). The judge reads at most its
+tokenizer window, 512 tokens for the passage and the claim together, and the passage is cut to
+that window before the numeric backstop and the judge read it: a figure past the window does not
+count. Cite the passage that carries your figures, not a whole document.
 
 The **evidence trace** is the collection of all citations in a submission: the chain of evidence
 from document passages to each prediction made by the agent.
@@ -172,24 +177,175 @@ from document passages to each prediction made by the agent.
 
 ## Faithfulness
 
-**Faithfulness** is the property that every *prediction* in an answer is supported by the evidence
-cited for it. It is not a property of the sentences you write: the hypothesis put to the judge is
-built from the values you submitted — `label` / `point_forecast` / `rank` / `interval` — plus the
-trusted task schema (`qfbench2_track_analysis/hypothesis.py`). Your `claim` text is parsed and
-reported, but it is never what the judge is asked about, so describing a cited passage accurately
-cannot make a wrong prediction faithful.
+**Faithfulness** is the property that no claim in an answer is false or misattributed. From scorer
+5.2.0 it is a **per-claim penalty**, not an admission gate: nothing has to be "passed", nothing is
+earned, and a demonstrably false claim costs its share of the unit's score. Whether your evidence
+supports your *forecast* is not this check's question; that belongs to reasoning grading, which is
+the only place evidence earns credit.
 
-Faithfulness is checked automatically by an NLI model. A roster entity's prediction is
-**supported** when the ensemble's two-way entailment score for (cited passage, that prediction) exceeds the
-per-citation threshold of 0.5 (`tau_citation`) for at least one span cited *for that entity*.
+**The rule.** Each claim is either **false** or **neutral**. The unit's score is
 
-**The denominator is the entity roster, not the number of claims you wrote.** One hypothesis is
-built per roster entity, in trusted roster order, so padding a submission with extra prose cannot
-move the score, and a citation can only support the entity it was attached to. The faithfulness
-score is the fraction of roster entities whose prediction is supported. A submission must score at
-or above `faithfulness_threshold` = 0.80 — at least 80% of the roster's predictions supported — to
-be eligible for ranking. Submissions below that are ineligible regardless of whether their
-predictions were correct.
+    score = composite x (1 - F / (F + min(T, 3 x E)))
+
+where F is the number of false claims, T the number of other claims and E the number of entities
+in the unit (the "soft floor"; `penalty_k` = 1 is the power the factor is raised to). In plain
+terms: each false claim costs a share of the unit; other claims beyond 3 × E in total (three times
+the number of entities, counted over the whole unit, not per entity) do not dilute the
+cost; a unit with no false claims is not penalised; content-free claims neither earn nor cost.
+Up to that cap it is the plain share (on a unit with 7 or more entities, one false claim among
+twenty costs 5%; on a 1-entity unit the cap is 3, so the same claim costs 1/(1 + 3) = 25%);
+past that, a false claim keeps costing at least 1/(F + 3E) of the unit however many claims are
+added. A unit whose every claim is false scores 0. A unit with no claims
+keeps its whole composite (alignment still requires `claims[]` on every entity). A unit is refused
+(worst-case score) only for structural errors: a schema violation, a missing, extra or duplicated
+entity, a non-finite number, an unresolved, undated or post-cutoff citation, a malformed citation.
+
+A claim is **false** when any one of these holds, checked in this order:
+
+1. **Wrong entity.** Every corpus document carries, in the unit's trusted manifest, either the
+   roster entities it is about (`entity_ids`) or `shared: true` for a market-wide document (an
+   FOMC statement, a macro series). A claim for entity E that cites a document the manifest does
+   not list E on, and does not mark shared, is false. A document about someone off the roster
+   (`entity_ids: []`) is about nobody on it. Before 5.2.0 one such citation refused the whole
+   unit; now it costs that claim. You can verify this rule yourself from the manifest.
+2. **Out-of-range citation.** A citation whose `span_start` / `span_end` are not a real slice of
+   the document (negative start, end past the document, start at or after end) names no passage,
+   and the claim carrying it is false.
+3. **Malformed claim.** An empty claim, one over 4000 characters, or one longer than **400
+   judge tokens** (counted with the judge's own tokenizer) has no usable text. A longer claim would leave the judge too little of its 512-token window for
+   the passage it cites.
+4. **A figure its passage does not carry.** Exact code, no model: **every figure in a claim must
+   appear in a passage the claim cites**, read against the whole cited span
+   `text[span_start:span_end]`, not only the part the judge reads. A claim with a figure none of
+   its cited spans carries is false. Details:
+   - Dates, years, periods, ordinals, identifiers, form or item numbers, and counts of periods
+     ("13 weeks", "10 sessions", "2 years") are not figures.
+   - A number that is part of one of the **unit's own entity names or tickers** as `task.json`
+     writes them ("Phillips 66", "S&P 500", "3M") is not a figure. Any other name is read as
+     written: a number in it is a figure.
+   - A figure that **exactly** equals a scored value you submitted is exempt: your point
+     forecast on a regression or ranking unit, and your interval bounds only when the unit's
+     interval leg is scored. Your rank is never exempt, and no scale, percent-versus-ratio or
+     rounding tolerance applies to your own values. Nothing else is exempt; a value from the
+     task table must cite the task table (see "Citing the task table" below).
+   - For figures in a passage, separators, scale (`$8.5M`, `1,498,614` in a table headed "in
+     thousands"), percent-versus-ratio, sign and rounding to the precision you wrote are all
+     tolerated.
+   - A cited span longer than **8,000 characters** (the per-citation cap of the reasoning
+     contract) anchors no figure. Cite the passage that states your figures, not a whole filing.
+   - A claim that is **word for word** a piece of a span it cites (whitespace runs compared as
+     one space) passes the figure check whole, even if the quote is cut mid-number. This wins
+     over the span cap above: a verbatim quote passes even when the span it cites is over 8,000
+     characters (the quote is looked for in the first 200,000 characters of the span); the cap
+     applies to every other claim.
+5. **Contradicted by its passage.** For every other claim the NLI judge reads each cited passage
+   (the premise) against **your `claim` text** (the hypothesis) and returns the three-way
+   probability that the passage **contradicts** the claim, averaged over the ensemble's two
+   models. The claim is false when that probability exceeds `contradiction_bar` = 0.9 for any of
+   its cited passages. A verbatim quote of a passage it cites (as in 4) states what that passage
+   states and is not put to the judge.
+
+Every other claim is **neutral**: a quoted passage, an accurate paraphrase, and generic text the
+passage neither confirms nor denies are never charged and earn nothing here. Beyond 3 × E claims
+in total (E = the number of entities in the unit), extra claims do not dilute the cost of a false
+claim either.
+
+### What the check measures, and what it does not
+
+It establishes that each claim is about the right entity, that it cites a real passage, that its
+figures are in that passage, and that the passage does not say the opposite. It does not
+establish that the prediction was derived from the evidence, and it does not try to: content-free
+claims are neutral here and score near zero in reasoning grading, so saying nothing checkable
+earns nothing, and stating specific true facts costs nothing.
+
+**Why the judge is asked about your claim and not about your forecast.** The obvious alternative
+is to ask whether the cited passage entails the *prediction*, rendered as a sentence from your
+submitted values. That question has no right answer: every document in a unit's corpus predates
+the unit's cutoff, and your forecast is about what happens after it, so no passage can entail one.
+It is still computed and recorded for the organizer's review queue as `prediction_relevance`, and
+it never affects your score.
+
+**Why contradiction, and why a high bar.** Before 5.2.0 a claim had to be *entailed* (two-way
+score above 0.5) and 80% of claims had to pass, so a vague claim could pass while one weak but
+honest claim could refuse the unit. Generic text is neither entailed nor contradicted, so asking
+for contradiction leaves it neutral. The bar is 0.9 because lower bars flag long verbatim quotes
+that the judge's 512-token window cuts short.
+
+**Why the entity check is deterministic and comes first.** An NLI model has no notion of which
+company a passage is about: give it a claim about company A and a passage from company B's filing
+and it answers "entailed" whenever the wording matches. The cited *document* does carry that
+identity, in the manifest, so the correspondence is checked there by exact code. On units whose
+corpus is shared by design (macro and rate units), every document is `shared`, so only the other
+checks apply.
+
+**Claims are extractive facts; computed figures belong in `submitted_reasons`.** A change
+between two rows, a growth rate, an average, a ratio, a spread, a share, a sum: any number you
+calculated is your argument, not the evidence. State the inputs as claims, each with the figures
+its passage carries, and put the calculation in a reason's `mechanism`, where reasoning grading
+judges derivations. A `submitted_reasons` block that does not match the schema (an empty list,
+more than 3 reasons, or a reason missing a required field) makes the whole answer invalid, like
+any schema error, so run the local checker (`check_submitted_reasons`) first; leaving reasons out
+never costs anything.
+
+- Wrong (claim): "Deposits grew 3.1% quarter on quarter, from $41.2 billion to $42.5 billion."
+  (3.1% is computed; no passage states it.)
+- Right: claim "Total deposits were $41.2 billion at 2025-12-31." (cites the row that says so);
+  claim "Total deposits were $42.5 billion at 2026-03-31." (cites its row); reason mechanism
+  "Deposits rose about 3.1% quarter on quarter (42.5 / 41.2 - 1) ...".
+
+**Why "every figure".** Under the per-claim penalty a false claim costs a share of the unit
+(at least 1/(F + 3E) of it: one false claim among twenty costs 5% on a unit with 7 or more
+entities), not the whole unit, so the check can ask for what an
+honest extractive claim always satisfies: every amount it states is one its evidence states. The
+earlier rule (false only when *no* figure was present, read in the judge's window) let a
+fabricated figure pass beside a genuine one.
+
+### Citing the task table
+
+A figure the task gives you (a value in a row of `task.json` `entities`, such as a prior-period
+balance) is cited like a corpus passage, with the reserved document id `"task"`:
+
+```json
+{"doc_id": "task", "span_start": 480, "span_end": 956}
+```
+
+The text a `"task"` span indexes is the **task table**: one line per `entities` row, in the order
+of `task.json`, each row written as
+
+```python
+json.dumps(row, ensure_ascii=False, separators=(", ", ": "))
+```
+
+(keys in file order), the lines joined by a single `"\n"` with no trailing newline. Offsets are
+character (code point) offsets into that text, the same convention as a corpus document's `text`.
+`qfbench2_track_analysis.corpus.task_table_text(task)` returns exactly this text and each row's
+`[start, end)`. A task span must lie inside **one** row, and that row must be the row of the
+entity whose prediction carries the claim: citing another entity's row, or a span that crosses
+rows, is a wrong-entity citation (false). The task table is dated at the cutoff, so it never trips
+the embargo. Only the `entities` rows are citable; the prompt and notes are instructions, not
+evidence.
+
+Every rule is specified case by case, on synthetic inputs, by the scorer's own test suite:
+`scoring/tests/test_claim_penalty.py` (the penalty, its parameters, the structural refusals),
+`scoring/tests/test_numeric_backstop.py` (every figure form),
+`scoring/tests/test_every_figure_rule.py` and `scoring/tests/test_figure_rule_refinements.py`
+(every figure, the task table, names, the span and claim-length caps, verbatim quotes) and
+`scoring/tests/test_entity_bound_citations.py` (the entity rule).
+
+**Why a cap of 3 × E claims.** With a plain share (false claims / all claims), padding an
+answer with many content-free claims would shrink what each false claim costs toward nothing.
+Counting at most 3 × E non-false claims in total (E entities) stops that: a false claim always costs at least
+1/(F + 3E) of the unit, while an honest answer with no false claim still scores its whole
+composite, and answers with at most 3 × E other claims score exactly as under the plain share.
+
+**The parameters are fixed scorer constants.** `penalty_k` = 1, `contradiction_bar` = 0.9 and the
+cap of 3 × E other claims
+are the same for every unit and every entrant; a `card.toml` or plan that names either is
+refused. Cards still carry the retired
+`faithfulness_threshold` = 0.80, which 5.2.0 reads as "use the per-claim penalty" and nothing
+else; any other value is refused. `tau_citation` = 0.5 now only sets the recorded
+`prediction_relevance` diagnostic. These are fixed scorer constants that will not change without a
+published notice.
 
 ---
 
@@ -248,10 +404,12 @@ candidate takes the same entailment-versus-contradiction branch; it does not pro
 constant 1.0. See the [Transformers implementation](https://github.com/huggingface/transformers/blob/5eddc12edfaf8cafde8c9bae4ccb12f8a139b4f9/src/transformers/pipelines/zero_shot_classification.py#L235-L254)
 and the call in [`faithfulness/judge.py`](../faithfulness/judge.py).
 
-The threshold for a single citation to pass is 0.5 (`tau_citation`): the entailment
-score, averaged across both models, must exceed 0.5. Admission then requires at least
-80% of the **roster's** predictions to be supported (`faithfulness_threshold` = 0.80) — see
-"Faithfulness" above for why the denominator is the roster and not the claim count.
+From scorer 5.2.0 the faithfulness check asks a separate question of the same forward pass: each
+model's **three-way** softmax over entailment, neutral and contradiction, of which the
+contradiction probability is averaged across both models. A claim is false when that average
+exceeds `contradiction_bar` = 0.9 for a span it cites — see "Faithfulness" above. The two-way
+entailment score above is unchanged and is used only for the recorded `prediction_relevance`
+diagnostic (bar 0.5, `tau_citation`).
 
 ---
 
@@ -280,13 +438,22 @@ All three land in **[0, 1]**. That is not incidental: the composite's first leg 
 `w_acc x predictive_quality`, and the domain of the whole metric depends on quality never going
 negative.
 
+**Classification and ranking are anchored to the naive rule (scorer 5.2.0).** The raw quality
+below is mapped so that 0 stays 0, matching the unit's declared naive rule
+(`reference/naive_answer.json`) scores **0.5**, and a perfect answer scores 1, linearly in
+between on each side. The anchor is the stronger of the declared naive rule's quality and, on a
+ranking unit, a constant forecast's 0.5. Regression already measures skill against a baseline
+(below), and the interval leg is measured against the naive interval, so both are unchanged. The
+raw quality, the naive rule's quality and the anchor are recorded in the unit's diagnostics.
+
 **Classification accuracy**: the fraction of rows where the predicted label (`beat`, `miss`, etc.)
 matches the true label. A random guesser on a three-class problem achieves ~0.33.
 
-**Regression skill score**: `clamp(1 - MAE / baseline_MAE, 0, 1)`, where `baseline_MAE` is the
-error of predicting the **cross-entity mean of the realized values** for that unit. A perfect model
-scores 1.0; a model no better than that mean scores 0.0; and a worse-than-baseline model scores
-0.0 as well — the score is clamped at zero and does **not** go negative.
+**Regression skill score**: `naive_MAE / (naive_MAE + MAE)`, where `naive_MAE` is the mean
+absolute error of the unit's **declared naive rule** (`reference/naive_answer.json`) and `MAE` is
+yours, both over the roster. An exact answer scores 1.0; an answer with the naive rule's error
+scores 0.5; a worse answer falls toward 0 as its error grows, and the score does **not** go
+negative.
 
 **Ranking (Spearman correlation, rescaled)**: the Spearman rank correlation `rho` between your
 ordering and the true one, rescaled as `(rho + 1) / 2`. **Ties rank as ties** — tied values share
@@ -297,9 +464,18 @@ so does a **constant** `point_forecast`: with no rank variance `rho` is 0, which
 neutral 0.5 — neither rewarded nor punished for saying nothing. An answer that predicts nothing at
 all scores 0.0.
 
-**Missing rows are not dropped.** A prediction you omit, or emit as NaN, is scored worst-case for
-that row — wrong for classification, at the baseline for regression, ranked last for ranking — so
-answering only the rows you are confident about can never raise your quality.
+**You cannot omit a row at all.** The roster is the denominator, and alignment checks it before
+any metric runs: your entity set must equal the trusted roster exactly — complete, unique, nothing
+extra. A missing, duplicated or unknown `entity_id` is a participant failure
+(`incomplete_output`), and the unit takes the worst value W rather than being scored on the rows
+you did answer. Measured on a four-entity ranking unit: the full roster correctly ordered, with
+intervals that cover, scores +0.8737; the same answer with one row omitted scores W = 0.0
+(scorer 5.1.0; 5.0.0 measured +0.67 and −0.27). On the leaderboard W shows as −0.27
+(leaderboard = −0.27 + 1.27 × analysis).
+
+So "answer only the rows you are confident about" is not a strategy that scores badly — it is not
+a submission. A NaN is refused on the same grounds rather than being scored worst-case: rows are
+never dropped to make a denominator smaller.
 
 ---
 
@@ -315,21 +491,32 @@ lo and hi."
 **Calibration** is the alignment between stated and empirical confidence. A perfectly calibrated
 agent's 90% intervals contain the true value exactly 90% of the time.
 
-**Sharpness** — narrowness — is a standard companion to calibration, and **Track 4 does not score
-it.** There is no width term, no Winkler score and no sharpness term anywhere in the scorer or the
-shared toolkit; a sweep for `sharpness|winkler|brier|interval_width` over every `.py` file returns
-nothing, while the control term `interval_coverage` is found where expected.
+**The interval leg (scorer 5.1.0).** Each row's interval is scored with the interval score (the
+Gneiting-Raftery interval score): its width plus `2/alpha` times the
+distance by which the truth falls outside it, `alpha = 1 - interval_level` (so 20x the miss at
+90%). The unit value is the mean over the roster, and it is compared with the same quantity for the
+unit's declared naive interval (`reference/naive_answer.json`):
 
-Earlier versions of this page described a normalised Winkler score, with a 20x miss penalty and a
-baseline calibrated to 0.5. **None of that was ever implemented.** The whole calibration leg is:
+    interval_quality = naive_IS / (naive_IS + IS)
+    composite = w_acc x predictive_quality + w_cal x interval_quality
 
-    composite = w_acc x predictive_quality - w_cal x |interval_coverage - interval_level|
+`interval_quality` is 0.5 when your intervals score the same as the naive rule's, approaches 1 for
+a sharp interval that contains the truth, and approaches 0 for a very wide one or a far miss.
+Both legs lie in [0, 1], so the domain is `[0, 1]` and the worst value W is 0.0 (shown as -0.27
+on the leaderboard, where leaderboard = -0.27 + 1.27 × analysis). Coverage is still
+reported as a diagnostic, but no longer scored.
 
-so the only thing an interval's width does is move empirical coverage toward or away from 0.90.
-Measured on a three-entity unit, everything identical except the interval: `[1.4, 1.9]` scored
-**-0.037** at coverage 0.0, and `[-1e9, 1e9]` scored **+0.203** at coverage 1.0. On a single unit,
-widening strictly helps. Aim for coverage near 90% across the task SET; do not expect to be paid
-for narrowness.
+Measured on a three-entity unit, everything identical except the interval (naive band
+`[0.5, 3.5]`): the naive band scored **+0.383**, `[1.4, 1.9]` (missing all three values) **+0.297**
+and `[-1e9, 1e9]` **+0.233**. Under 5.0.0 the calibration leg was
+`- w_cal x |interval_coverage - interval_level|`, the same two intervals scored **-0.037** and
+**+0.203**, and widening strictly helped; that is no longer true.
+
+A classification unit whose numeric truth is only a 0/1 label code may declare
+`interval_leg = false` in its card's `[scoring.params]`; it is then scored on the label alone, as
+a pure-label unit is. From scorer 5.2.0 such a unit's composite is the (anchored) prediction leg
+itself, not `w_acc` times it, so it is not capped at `w_acc`. The interval is still required by the
+answer schema on every unit.
 
 ---
 
@@ -364,7 +551,7 @@ beliefs will contradict the corpus text in its own claims — a contradiction th
 
 ## Manual review
 
-The automated NLI check is the primary faithfulness gate. But it is not perfect. **Manual review**
+The automated NLI check is the primary faithfulness check. But it is not perfect. **Manual review**
 is triggered in two situations: (1) any submission that scores in the top 20% of the leaderboard
 gets human review to confirm the automated scoring did not miss a subtle faithfulness failure;
 (2) any submission where the NLI score for a key citation falls between 0.40 and 0.60 — within

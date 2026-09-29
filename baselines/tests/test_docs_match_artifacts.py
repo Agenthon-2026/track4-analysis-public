@@ -1,9 +1,9 @@
-"""Prose-vs-artifact drift guards (prevention PR from the 2026-08-27 sweep).
+"""Prose-vs-artifact drift guards.
 
-The sweep found 39 cases of prose hand-duplicating an authoritative artifact (schema, card,
-code) and then drifting from it. These tests pin the four highest-traffic fact classes to
-their artifacts so the next drift fails CI at authoring time instead of surviving to a
-participant. Standard library only, so the whole file runs in the secret-free ``firewall``
+Prose that hand-duplicates an authoritative artifact (schema, card, code) drifts from it: the
+artifact changes and the sentence restating it does not. These tests pin the four
+highest-traffic fact classes to their artifacts so the next drift fails CI at authoring time
+instead of surviving to a participant. Standard library only, so the whole file runs in the secret-free ``firewall``
 CI job (which runs ``pytest baselines``).
 
 Each guard says which past finding it would have caught, and carries the *exemplars* of that
@@ -14,7 +14,7 @@ When one of these fails, the fix is almost never "edit the test": either the pro
 artifact changed unilaterally — make them agree, or link the prose to the artifact instead of
 restating it (the standing editorial rule in AGENTS.md).
 
-Fail-closed rule (repo rule R3): every patrolled document must be present. If a file named in
+Fail-closed rule: every patrolled document must be present. If a file named in
 :data:`DOC_FILES` is deleted or renamed, these guards FAIL — they do not quietly patrol a
 smaller corpus and report green.
 """
@@ -66,7 +66,7 @@ def _require(paths: list[str], what: str) -> None:
     assert not missing, (
         f"{what} named in this guard no longer exist(s): {missing}. A guard whose subject has "
         "vanished must fail, not pass — either restore the file or delete it from the list in "
-        "a commit that says why (repo rule R3)."
+        "a commit that says why (the fail-closed rule)."
     )
 
 
@@ -140,7 +140,7 @@ def _bindings(text: str, name: str) -> list[tuple[int, str]]:
             # In a FORMULA, a parameter name before `=` binds the formula's RESULT, not the
             # parameter. `W = -w_cal x interval_level = -0.27` was read as
             # "interval_level = 0.27" and red-lighted prose that is correct (0.3 x 0.9 = 0.27,
-            # matching #28's DOMAIN_MIN). If an `=` already appears between the start of the
+            # matching the scorer's DOMAIN_MIN at the time). If an `=` already appears between the start of the
             # line and this occurrence, the name is on a right-hand side and what follows is a
             # result.
             line_start = text.rfind("\n", 0, m.start()) + 1
@@ -229,15 +229,15 @@ def test_composite_weights_quoted_in_prose_keep_the_cards_order() -> None:
 # --------------------------------------------------------------------------- #
 # 2. Repo-relative paths in fenced code blocks exist                          #
 # --------------------------------------------------------------------------- #
-# Kills the M8 class permanently: every one of those findings was a copy-pasteable command or
-# path that failed for whoever copied it. The first version caught neither exemplar — `cd
+# Kills this class permanently: the failure mode is a copy-pasteable command or path that fails
+# for whoever copied it. The first version caught neither exemplar — `cd
 # public` is a bare directory (no slash, so the path regex never saw it) and
 # `tracks/track4-analysis/public/units/...` began with two directories that were missing from
 # _TOP_DIRS. Both are now controls in test_guard2_catches_its_own_exemplars.
 
 #: Directory names that begin a repo-relative path. `tracks` and `public` do NOT exist in this
-#: repo — they are the monorepo-relative prefixes the M8 findings used, and they are listed
-#: precisely so that quoting one fails.
+#: repo — they are monorepo-relative prefixes that have been pasted into these documents before,
+#: and they are listed precisely so that quoting one fails.
 _TOP_DIRS = (
     r"(?:tracks|public|baselines|docs|templates|units|scoring|faithfulness"
     r"|qfbench2_track_analysis|\.github)"
@@ -288,7 +288,7 @@ def test_paths_in_fenced_code_blocks_exist() -> None:
 
 
 def test_guard2_catches_its_own_exemplars() -> None:
-    """The two M8 exemplars, as controls. Both passed the first version of this guard."""
+    """Two known-bad exemplars, as controls. Both passed the first version of this guard."""
     exemplars = {
         "cd public": "```bash\ncd public\npip install -r baselines/requirements.txt\n```",
         "monorepo-prefixed unit path": (
@@ -310,7 +310,7 @@ def test_guard2_catches_its_own_exemplars() -> None:
 # --------------------------------------------------------------------------- #
 # 3. Env vars in the baseline READMEs are part of the published contract      #
 # --------------------------------------------------------------------------- #
-# Would have caught H6 at authoring time: the reference agent documented (and read) MODEL_ID
+# Would have caught an earlier defect at authoring time: the reference agent documented (and read) MODEL_ID
 # while the harness injects MODEL_NAME. Any env var either comes from SUBMISSION_CLI.md's
 # container-environment table or is an explicitly documented local-dev knob below.
 #
@@ -320,10 +320,10 @@ def test_guard2_catches_its_own_exemplars() -> None:
 # fixed; the T4_ knobs are now individually allowlisted and each must be read by shipped code.
 
 #: Local-dev / harness knobs that are deliberately NOT in the container contract. Add here
-#: only with a justification comment — an unexplained addition is exactly the H6 pattern.
+#: only with a justification comment — an unexplained addition is exactly the pattern this guards against.
 #: Every ``T4_*`` entry must be read by shipped code (see the test below).
 _LOCAL_ENV_ALLOWLIST = {
-    "MODEL_ID",  # strong-RAG local-dev fallback for MODEL_NAME (H6 fix)
+    "MODEL_ID",  # strong-RAG local-dev fallback for MODEL_NAME
     "MODEL_TOKEN",  # strong-RAG local-dev bearer token; not harness-injected
     "QFBENCH_GPU_DEVICE",  # worker-side GPU pin, documented in the GPU caveats
     "TRANSFORMERS_CACHE",  # judge model-cache override, local runs
@@ -363,13 +363,13 @@ def test_env_vars_in_baseline_readmes_are_in_the_contract() -> None:
                 offenders.append(f"{rel}: `{var}`")
     assert not offenders, (
         "baseline READMEs name env vars that are neither in SUBMISSION_CLI.md's container "
-        "contract nor in the documented local-dev allowlist (the H6 pattern):\n"
+        "contract nor in the documented local-dev allowlist:\n"
         + "\n".join(sorted(offenders))
     )
 
 
 def test_local_env_allowlist_entries_are_read_by_shipped_code() -> None:
-    """An allowlist nobody checks is how H6 survived. Every T4_ knob must exist in code."""
+    """An allowlist nobody checks lets undocumented knobs survive. Every T4_ knob must exist in code."""
     sources = "\n".join(
         p.read_text(encoding="utf-8")
         for d in ("baselines", "faithfulness", "qfbench2_track_analysis", "scoring")
@@ -386,20 +386,20 @@ def test_local_env_allowlist_entries_are_read_by_shipped_code() -> None:
 # --------------------------------------------------------------------------- #
 # 4. [environment] values quoted in prose match the template card             #
 # --------------------------------------------------------------------------- #
-# Catches H7 recurrence: prose restating the compute grant with numbers the template card does
+# Catches prose restating the compute grant with numbers the template card does
 # not carry. The first version matched only the literal `cpus=`/`memory=`/`gpu=` spelling, so
 # it patrolled a single templated line in the whole corpus and the drift that actually shows up
 # in prose ("99 vCPUs", "128 GB of RAM", "no GPU", "CPU-only") sailed past. It now reads the
 # prose spellings too, and checks `network` as well.
 #
-# (Template-vs-held-out-card alignment is decision D1's territory and cannot be tested from the
+# (Template-vs-held-out-card alignment is an organizer matter and cannot be tested from the
 # public repo; this guard pins prose to the template so the two can only move together.)
 #
 # KNOWN GAP, deliberately not closed here: README.md's runtime-constraints row and
 # baselines/README.md's wall-clock bullet both read "10 minutes per unit (CPU)" while the
 # template card says `gpu = true`. A bare parenthetical "(CPU)" is not matched below, because
 # making it fail would force this PR to rewrite a participant-facing compute promise, and which
-# way it should be rewritten is decision D1/M6 (private issue #48), not a mechanical fix. The
+# way it should be rewritten is an organizer decision, not a mechanical fix. The
 # unambiguous spellings ("no GPU", "CPU-only", "GPUs are not provided", `gpu = false`) DO fail.
 
 _CPU_RES = [
@@ -468,8 +468,8 @@ def test_environment_grant_quoted_in_prose_matches_the_exemplar_card() -> None:
     env = _card()["environment"]
     offenders = _environment_offenders(_doc_texts(), env)
     assert not offenders, (
-        "prose quotes an [environment] grant the exemplar card does not make (the H7 "
-        "pattern):\n" + "\n".join(offenders)
+        "prose quotes an [environment] grant the exemplar card does not make:\n"
+        + "\n".join(offenders)
     )
 
 

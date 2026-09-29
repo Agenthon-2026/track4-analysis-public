@@ -95,7 +95,7 @@ def _offenders(root: Path) -> list[str]:
 
 
 def test_units_directory_exists() -> None:
-    """Fail-closed (repo rule R3): an absent units/ is a guard that stopped guarding."""
+    """Fail-closed: an absent units/ is a guard that stopped guarding."""
     assert UNITS.is_dir(), "units/ is missing; this guard has nothing to patrol"
     assert any(UNITS.iterdir()), "units/ is empty"
 

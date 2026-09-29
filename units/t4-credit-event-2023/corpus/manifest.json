@@ -13,7 +13,10 @@
       "split": "public-dev",
       "cutoff": "2023-03-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "RAD"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000716006_10K_20230209.json",
@@ -25,7 +28,10 @@
       "split": "public-dev",
       "cutoff": "2023-03-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "YELL"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000764478_10K_20230317.json",
@@ -37,7 +43,10 @@
       "split": "public-dev",
       "cutoff": "2023-03-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "BBY"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000794367_10K_20230324.json",
@@ -49,7 +58,10 @@
       "split": "public-dev",
       "cutoff": "2023-03-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "M"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000878927_10K_20230222.json",
@@ -61,7 +73,10 @@
       "split": "public-dev",
       "cutoff": "2023-03-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "ODFL"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000886158_10Q_20230126.json",
@@ -73,7 +88,10 @@
       "split": "public-dev",
       "cutoff": "2023-03-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "BBBY"
+      ]
     },
     {
       "path": "corpus/EDGAR_0001618921_10Q_20230328.json",
@@ -85,7 +103,10 @@
       "split": "public-dev",
       "cutoff": "2023-03-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "WBA"
+      ]
     },
     {
       "path": "corpus/EDGAR_0001813756_10K_20230329.json",
@@ -97,7 +118,10 @@
       "split": "public-dev",
       "cutoff": "2023-03-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "WE"
+      ]
     }
   ]
 }

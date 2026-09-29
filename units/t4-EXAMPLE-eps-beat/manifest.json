@@ -7,8 +7,8 @@
       "path": "task.json",
       "role": "input",
       "license": "Public domain (US government works: SEC EDGAR filings; Federal Reserve / FRED and BEA series)",
-      "sha256": "e92f32e0b2ac988fac6db9d9becabf20c72117f374dcf8aed7adaa24db9d1802",
-      "bytes": 1786,
+      "sha256": "268d3b1c54f06d016288c706324e4572ae5f9c0289833555d29575bd2685a14d",
+      "bytes": 2165,
       "split": "public-dev",
       "redistributable": true
     },
@@ -23,7 +23,10 @@
       "cutoff": "2024-03-15",
       "public_release_date": "2026-07-20",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "AAPL"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000320193_8K_20240201.json",
@@ -36,7 +39,10 @@
       "cutoff": "2024-03-15",
       "public_release_date": "2026-07-20",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "AAPL"
+      ]
     }
   ],
   "notes": "Example unit. Canonical per-file manifest; domain metadata (panels/targets/corpus) lives in card.toml."

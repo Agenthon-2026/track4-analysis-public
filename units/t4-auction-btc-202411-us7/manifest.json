@@ -7,8 +7,8 @@
       "path": "card.toml",
       "role": "input",
       "license": "Public domain (US government works: U.S. Department of the Treasury / TreasuryDirect auction results)",
-      "sha256": "574663b80a212ef064be6fce03e3b48df1bd8269e7788cdc76742e04bbd40e96",
-      "bytes": 3949,
+      "sha256": "2a9234d02746d26e3d63dcf8f723b20b98aed95e8ad70f1332af87aa43c0bffb",
+      "bytes": 4219,
       "split": "public-dev",
       "redistributable": true
     },
@@ -31,7 +31,10 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "TreasuryDirect"
+      "source": "TreasuryDirect",
+      "entity_ids": [
+        "AUC_10Y_20241105"
+      ]
     },
     {
       "path": "corpus/TDIRECT_AUCTIONS_20Y_20241031.json",
@@ -43,7 +46,10 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "TreasuryDirect"
+      "source": "TreasuryDirect",
+      "entity_ids": [
+        "AUC_20Y_20241120"
+      ]
     },
     {
       "path": "corpus/TDIRECT_AUCTIONS_2Y_20241031.json",
@@ -55,7 +61,10 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "TreasuryDirect"
+      "source": "TreasuryDirect",
+      "entity_ids": [
+        "AUC_2Y_20241125"
+      ]
     },
     {
       "path": "corpus/TDIRECT_AUCTIONS_30Y_20241031.json",
@@ -67,7 +76,10 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "TreasuryDirect"
+      "source": "TreasuryDirect",
+      "entity_ids": [
+        "AUC_30Y_20241106"
+      ]
     },
     {
       "path": "corpus/TDIRECT_AUCTIONS_3Y_20241031.json",
@@ -79,7 +91,10 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "TreasuryDirect"
+      "source": "TreasuryDirect",
+      "entity_ids": [
+        "AUC_3Y_20241104"
+      ]
     },
     {
       "path": "corpus/TDIRECT_AUCTIONS_5Y_20241031.json",
@@ -91,7 +106,10 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "TreasuryDirect"
+      "source": "TreasuryDirect",
+      "entity_ids": [
+        "AUC_5Y_20241126"
+      ]
     },
     {
       "path": "corpus/TDIRECT_AUCTIONS_7Y_20241031.json",
@@ -103,7 +121,10 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "TreasuryDirect"
+      "source": "TreasuryDirect",
+      "entity_ids": [
+        "AUC_7Y_20241127"
+      ]
     },
     {
       "path": "corpus/TDIRECT_UPCOMING_20241030.json",
@@ -115,14 +136,15 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "TreasuryDirect"
+      "source": "TreasuryDirect",
+      "shared": true
     },
     {
       "path": "corpus/manifest.json",
       "role": "input",
       "license": "Public domain (US government works: U.S. Department of the Treasury / TreasuryDirect auction results)",
-      "sha256": "a7931cee6d0c8f2129ead16c1e25e161b45cd551874866cf0e50554c473ad785",
-      "bytes": 3928,
+      "sha256": "731ba53ed88199cad6137c378bc33377f807d68e0e0cc10fd618dfe1f98f5ad6",
+      "bytes": 4352,
       "split": "public-dev",
       "redistributable": true
     }

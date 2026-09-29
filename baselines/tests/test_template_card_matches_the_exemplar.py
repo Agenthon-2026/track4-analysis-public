@@ -8,7 +8,7 @@ unit's card, which is the card a participant actually receives.
 
 Standard library only, so this runs in the secret-free ``firewall`` CI job.
 
-Fail-closed (repo rule R3): if either file is missing, this test FAILS. It does not skip.
+Fail-closed: if either file is missing, this test FAILS. It does not skip.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ def _load(path: Path) -> dict:
     assert path.exists(), (
         f"{path.relative_to(REPO)} is missing. This guard pins the published template to the "
         "exemplar card; a missing file means the pin stopped existing, not that it stopped "
-        "mattering (repo rule R3)."
+        "mattering (the fail-closed rule)."
     )
     with open(path, "rb") as fh:
         return tomllib.load(fh)

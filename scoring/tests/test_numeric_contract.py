@@ -1,4 +1,4 @@
-"""T4-3 numeric half, plus the frozen failure semantics: W, the denominator, and clipping.
+"""Numeric targets, plus the frozen failure semantics: W, the denominator, and clipping.
 
 Four measured defects live here, and they pointed in three different directions:
 
@@ -180,9 +180,10 @@ def test_a_card_value_that_disagrees_with_the_trusted_plan_is_refused() -> None:
 
 
 # --- frozen failure semantics -------------------------------------------------------------------
-def test_worst_case_is_the_frozen_minus_point_two_seven() -> None:
-    assert worst_case_score((0.7, 0.3), 0.90) == pytest.approx(-0.27)
-    assert DOMAIN_MIN == pytest.approx(-0.27)
+def test_worst_case_is_zero_under_the_interval_ratio() -> None:
+    """5.1.0: both composite legs are ratios in [0, 1], so W moved from -0.27 to 0."""
+    assert worst_case_score((0.7, 0.3), 0.90) == 0.0
+    assert DOMAIN_MIN == 0.0
 
 
 def test_a_failed_unit_scores_w_and_is_never_none(tmp_path: pathlib.Path) -> None:
@@ -199,7 +200,7 @@ def test_real_scores_are_clipped_into_the_same_domain() -> None:
 
 
 def test_failure_can_never_beat_an_attainable_real_score() -> None:
-    """The property R-2 exists for: W is the worst end of the domain, and reals are clipped in."""
+    """The property the domain floor exists for: W is the worst end of the domain, and reals are clipped in."""
     for real in (-1.0, -0.27, 0.0, 0.5, 1.0, 2.0):
         assert clip_to_domain(real) >= DOMAIN_MIN
 

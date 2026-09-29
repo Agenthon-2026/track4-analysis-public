@@ -8,14 +8,18 @@
     "labels": [
       "credit_event",
       "no_event"
-    ]
+    ],
+    "label_assertions": {
+      "credit_event": "will experience a credit event in the 12 months after 2023-03-31",
+      "no_event": "will not experience a credit event in the 12 months after 2023-03-31"
+    }
   },
   "prompt": "Using ONLY the frozen evidence corpus (each company's SEC filings available on or before the 2023-03-31 cutoff), predict for each company whether it will experience a CREDIT EVENT in the 12 months after the cutoff (through 2024-03-31). A credit event = a Chapter 11 or Chapter 7 bankruptcy filing, a payment default, or a rating-agency-recognized distressed debt exchange. For each company give a label (credit_event / no_event), a point_forecast = your predicted PROBABILITY of a credit event (0 to 1), and a 90% interval on that probability. Reason from pre-cutoff solvency signals - going-concern language, net losses, leverage, near-term debt maturities, covenant headroom, and liquidity. Support every prediction with citations to the frozen corpus. Do NOT rely on any post-cutoff information; it is absent by design.",
   "cutoff_date": "2023-03-31",
   "resolution_date": "2024-03-31",
   "interval_level": 0.9,
   "corpus_manifest": "corpus/manifest.json",
-  "faithfulness_rubric": "Every claim must cite a passage from a corpus/ document whose doc_date <= 2023-03-31 (embargo). A roster entity's prediction counts as supported when some cited span entails it above tau_citation = 0.5; the unit is admissible when at least faithfulness_threshold = 0.80 of the ROSTER's predictions are supported -- the denominator is the roster, not the number of claims written. Claims must not assert post-cutoff events (the bankruptcy filings themselves are post-cutoff, absent by design). Failure codes: T4_UNFAITHFUL_CITATION, T4_STALE_EVIDENCE.",
+  "faithfulness_rubric": "Every claim must cite a passage from a corpus/ document whose doc_date <= 2023-03-31 (embargo). A roster entity's prediction counts as supported when some cited span entails it above tau_citation = 0.5; the unit is admissible when at least faithfulness_threshold = 0.80 of the ROSTER's predictions are supported -- the denominator is the roster, not the number of claims written. Claims must not assert post-cutoff events. Failure codes: T4_UNFAITHFUL_CITATION, T4_STALE_EVIDENCE.",
   "entities": [
     {
       "entity_id": "BBBY",

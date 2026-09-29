@@ -247,8 +247,8 @@ def test_no_published_doc_calls_a_schema_failure_a_coverage_penalty() -> None:
 
 def test_no_published_doc_still_calls_the_wall_clock_budget_cpu_only() -> None:
     """Every card in this repo declares `gpu = true`; "(CPU)" contradicted the card the same
-    sentence cites as authoritative. Whether participants are PROMISED a GPU is an owner
-    ruling, so the false claim is removed rather than replaced."""
+    sentence cites as authoritative. Whether participants are PROMISED a GPU is an organizer
+    decision, so the false claim is removed rather than replaced."""
     checked = [
         _REPO / "README.md",
         _REPO / "baselines" / "README.md",

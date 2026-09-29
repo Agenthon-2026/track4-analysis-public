@@ -7,8 +7,8 @@
       "path": "card.toml",
       "role": "input",
       "license": "CC-BY-4.0",
-      "sha256": "66f8ae0be1e2331dd8188f7bad5f5fb68fdbb48d22bbfcefd2a8c8c921e0ee88",
-      "bytes": 3753,
+      "sha256": "1c1764c5859cd455e6bbcbcae6fb02058ddb4b25dcb5af089f6c7fdfe7e8f9a7",
+      "bytes": 4023,
       "split": "public-dev",
       "redistributable": true
     },
@@ -31,7 +31,10 @@
       "redistributable": true,
       "cutoff": "2024-10-10",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "JPM"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000019617_8K_20240820.json",
@@ -43,7 +46,10 @@
       "redistributable": true,
       "cutoff": "2024-10-10",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "JPM"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000036104_10Q_20240806.json",
@@ -55,7 +61,10 @@
       "redistributable": true,
       "cutoff": "2024-10-10",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "USB"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000036104_8K_20240912.json",
@@ -67,7 +76,10 @@
       "redistributable": true,
       "cutoff": "2024-10-10",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "USB"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000070858_10Q_20240730.json",
@@ -79,7 +91,10 @@
       "redistributable": true,
       "cutoff": "2024-10-10",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "BAC"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000072971_10Q_20240801.json",
@@ -91,7 +106,10 @@
       "redistributable": true,
       "cutoff": "2024-10-10",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "WFC"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000713676_10Q_20240802.json",
@@ -103,7 +121,10 @@
       "redistributable": true,
       "cutoff": "2024-10-10",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "PNC"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000831001_10Q_20240802.json",
@@ -115,7 +136,10 @@
       "redistributable": true,
       "cutoff": "2024-10-10",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "C"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000831001_8K_20240910.json",
@@ -127,7 +151,10 @@
       "redistributable": true,
       "cutoff": "2024-10-10",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "C"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000886982_10Q_20240802.json",
@@ -139,7 +166,10 @@
       "redistributable": true,
       "cutoff": "2024-10-10",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "GS"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000886982_8K_20240919.json",
@@ -151,7 +181,10 @@
       "redistributable": true,
       "cutoff": "2024-10-10",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "GS"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000895421_10Q_20240805.json",
@@ -163,14 +196,17 @@
       "redistributable": true,
       "cutoff": "2024-10-10",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "MS"
+      ]
     },
     {
       "path": "corpus/manifest.json",
       "role": "input",
       "license": "CC-BY-4.0",
-      "sha256": "bafc65f9d3e77861bb03a8d0afb785c53d1edd381029bfd1b42bc044b7e50055",
-      "bytes": 6145,
+      "sha256": "d5d93c13c5b449b786002a41acfc2cc1bb488713f80f2f21887e3dbc8b0a8c5d",
+      "bytes": 6678,
       "split": "public-dev",
       "redistributable": true
     }

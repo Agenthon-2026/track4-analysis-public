@@ -1,5 +1,4 @@
-"""The formatter's advertised "second embargo filter" must actually exist (finding H5,
-prose-drift sweep 2026-08-27).
+"""The formatter's advertised "second embargo filter" must actually exist.
 
 baselines/README.md §5 and formatter.py's own docstring both promise that the output
 formatter "drops any citation whose doc_date > cutoff_date before writing output". Before

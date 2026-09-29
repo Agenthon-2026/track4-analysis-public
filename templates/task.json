@@ -6,7 +6,13 @@
   "target": {
     "name": "REPLACE_target_name",
     "type": "classification",
-    "labels": ["REPLACE_LABEL_A", "REPLACE_LABEL_B"]
+    "labels": ["REPLACE_LABEL_A", "REPLACE_LABEL_B"],
+    "label_assertions": {
+    
+  "REPLACE_LABEL_A": "REPLACE with what this label ASSERTS, as a predicate completing \"<entity> ___\", derived from this task's own definition and never from the corpus",
+    
+  "REPLACE_LABEL_B": "REPLACE with what this label ASSERTS, as a predicate completing \"<entity> ___\", derived from this task's own definition and never from the corpus"
+    }
   },
   "prompt": "REPLACE: plain-English description of what to predict per entity row, including the units a numeric target must be in.",
   "cutoff_date": "YYYY-MM-DD",

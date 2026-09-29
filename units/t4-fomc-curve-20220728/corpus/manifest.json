@@ -13,7 +13,8 @@
       "split": "public-dev",
       "cutoff": "2022-07-28",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "shared": true
     },
     {
       "path": "corpus/RATES_SNAPSHOT_20220728.json",
@@ -25,7 +26,8 @@
       "split": "public-dev",
       "cutoff": "2022-07-28",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "shared": true
     }
   ]
 }

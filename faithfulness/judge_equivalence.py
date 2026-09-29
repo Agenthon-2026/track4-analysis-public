@@ -9,7 +9,7 @@ judge backends and reports, per ensemble member and for the ensemble mean:
   that matters: a delta that flips no claim past tau changes no unit score.
 
 The report is written as JSON and summarized on stdout. It is the evidence
-basis for the serving-pin tolerance ruling; the harness itself asserts
+basis for the serving-pin tolerance; the harness itself asserts
 nothing — it measures.
 
 Usage::

@@ -7,8 +7,8 @@
       "path": "card.toml",
       "role": "input",
       "license": "Public domain (US government works: U.S. Commodity Futures Trading Commission, Commitments of Traders reports)",
-      "sha256": "fc26abf0091464654081b53b0ac2aec431bbc197a2445e1ed57be6533dc1f7cf",
-      "bytes": 4268,
+      "sha256": "b507faa58b27d3c0243bb46d67589dfc733ce78f8d1001f952a32cfee04ed096",
+      "bytes": 4538,
       "split": "public-dev",
       "redistributable": true
     },
@@ -31,7 +31,10 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "CFTC"
+      "source": "CFTC",
+      "entity_ids": [
+        "CORN_CBT"
+      ]
     },
     {
       "path": "corpus/COT_ES_SP500_20241025.json",
@@ -43,7 +46,10 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "CFTC"
+      "source": "CFTC",
+      "entity_ids": [
+        "ES_SP500"
+      ]
     },
     {
       "path": "corpus/COT_EURO_FX_20241025.json",
@@ -55,7 +61,10 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "CFTC"
+      "source": "CFTC",
+      "entity_ids": [
+        "EURO_FX"
+      ]
     },
     {
       "path": "corpus/COT_GOLD_CMX_20241025.json",
@@ -67,7 +76,10 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "CFTC"
+      "source": "CFTC",
+      "entity_ids": [
+        "GOLD_CMX"
+      ]
     },
     {
       "path": "corpus/COT_JPY_CME_20241025.json",
@@ -79,7 +91,10 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "CFTC"
+      "source": "CFTC",
+      "entity_ids": [
+        "JPY_CME"
+      ]
     },
     {
       "path": "corpus/COT_METHODOLOGY_20241025.json",
@@ -91,7 +106,8 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "CFTC"
+      "source": "CFTC",
+      "shared": true
     },
     {
       "path": "corpus/COT_NATGAS_NYMEX_20241025.json",
@@ -103,7 +119,10 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "CFTC"
+      "source": "CFTC",
+      "entity_ids": [
+        "NATGAS_NYMEX"
+      ]
     },
     {
       "path": "corpus/COT_SILVER_CMX_20241025.json",
@@ -115,7 +134,10 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "CFTC"
+      "source": "CFTC",
+      "entity_ids": [
+        "SILVER_CMX"
+      ]
     },
     {
       "path": "corpus/COT_UST_10Y_20241025.json",
@@ -127,7 +149,10 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "CFTC"
+      "source": "CFTC",
+      "entity_ids": [
+        "UST_10Y"
+      ]
     },
     {
       "path": "corpus/COT_UST_2Y_20241025.json",
@@ -139,7 +164,10 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "CFTC"
+      "source": "CFTC",
+      "entity_ids": [
+        "UST_2Y"
+      ]
     },
     {
       "path": "corpus/COT_WTI_NYMEX_20241025.json",
@@ -151,7 +179,10 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "CFTC"
+      "source": "CFTC",
+      "entity_ids": [
+        "WTI_NYMEX"
+      ]
     },
     {
       "path": "corpus/MKT_SNAPSHOT_20241031.json",
@@ -163,14 +194,15 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "FRED"
+      "source": "FRED",
+      "shared": true
     },
     {
       "path": "corpus/manifest.json",
       "role": "input",
       "license": "Public domain (US government works: U.S. Commodity Futures Trading Commission, Commitments of Traders reports)",
-      "sha256": "1cf78edbd078fca2de2887a4cddd132e49e5be5e7a228386f7c39c3078aa5499",
-      "bytes": 5725,
+      "sha256": "ea86844d806c458e14abbf65f8b74d830ace56317f73fef78be45d62a2273b2e",
+      "bytes": 6271,
       "split": "public-dev",
       "redistributable": true
     }

@@ -52,7 +52,7 @@ from .retriever import BM25Index
 # invented is not a forecast and pretending otherwise reads as one. The single exception is
 # RANKING units, where the scorer reads `point_forecast` and nothing else, so an identical
 # vector is the degenerate answer whose score depends on the sealed roster order rather than
-# on the prediction (public #47). There the stub echoes one of the entity's own features --
+# on the prediction. There the stub echoes one of the entity's own features --
 # not because the number means anything, but so that no shipped code here models that shape.
 # Echoing a feature on the other target types would be worse than 0.0, not better: on the
 # EPS exemplar the first numeric feature is `mktcap_bn`, and emitting 2650.0 as a forecast

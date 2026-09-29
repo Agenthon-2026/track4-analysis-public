@@ -1,9 +1,9 @@
 """The version a participant resolves must be the version the package ships.
 
 Track 2 previously declared 2.1.0 in `pyproject.toml` and 2.0.0 in the package, so a participant who
-found a version could not trust it. The four scorers now share one number, bumped together, and this
-pins the two declarations in THIS repository to each other -- a cross-repo check is not possible from
-here, but drift within a repo is what actually shipped.
+found a version could not trust it. This pins the two declarations in this repository to each other,
+and pins the Track 4 scorer version itself. Track 4's scorer version now moves on its own, apart from
+the other tracks' scorers.
 """
 
 from __future__ import annotations
@@ -29,10 +29,15 @@ def test_pyproject_and_scorer_version_agree():
     )
 
 
-def test_the_shared_version_is_what_the_owner_set():
-    assert SCORER_VERSION == "3.1.0", (
-        "all four track scorers share one version, bumped together (owner ruling 2026-09-11). "
-        "Changing it here alone reintroduces exactly the drift this replaced."
+def test_the_track4_scorer_version_is_pinned():
+    """Track 4's scorer version now moves on its own; it is no longer shared with the other tracks.
+
+    Changing it is a scoring change that participants are told about, so a bump must update this pin
+    on purpose.
+    """
+    assert SCORER_VERSION == "5.2.0", (
+        f"SCORER_VERSION is {SCORER_VERSION}; the published Track 4 scorer version is 5.2.0. "
+        "Update this pin only together with a published scoring notice."
     )
 
 

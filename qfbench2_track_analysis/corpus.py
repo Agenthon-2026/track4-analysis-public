@@ -47,10 +47,12 @@ __all__ = [
     "DOC_ID_RE",
     "ISO_DATE_RE",
     "MAX_DOC_BYTES",
+    "TASK_DOC_ID",
     "CorpusIndex",
     "EmbargoReport",
     "TrustedDoc",
     "parse_iso_date",
+    "task_table_text",
 ]
 
 #: One path component, no separators, no leading dot. Deliberately the same shape as the hub's
@@ -62,6 +64,17 @@ DOC_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 #: permissive on 3.11+ — it accepts `20240201` and ISO week dates — and two spellings of one day
 #: is how a "lexical == chronological" comparison stops being either.
 ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+#: The reserved doc_id of the unit's TASK TABLE (5.2.x). A claim may cite a figure
+#: the task gives (a row of `task.json` `entities`) the same way it cites a corpus passage:
+#: ``{"doc_id": "task", "span_start": s, "span_end": e}``. The text such a span indexes is
+#: `task_table_text(task)`: one line per `entities` row, in task.json order, each row written as
+#: ``json.dumps(row, ensure_ascii=False, separators=(", ", ": "))`` (keys in file order), lines
+#: joined by a single "\n", no trailing newline. Offsets are Python string (code point) offsets
+#: into that text, the convention of a corpus document's `text`. A task span must lie inside ONE
+#: row, the row of the entity whose claim cites it (the entity check); a span that crosses a line
+#: or names another entity's row is a wrong-entity citation.
+TASK_DOC_ID = "task"
 
 #: The corpus directory's own index file. Manifested like everything else, never a citable doc.
 CORPUS_INDEX_FILENAME = "manifest.json"
@@ -111,6 +124,41 @@ class TrustedDoc:
     digest: str
     doc_date: _dt.date
     document: Mapping[str, Any]
+    #: Which roster entities the organizer says this document is ABOUT (`entity_ids` on the
+    #: manifest entry). ``()`` means "about someone off the roster" (a peer, a benchmark): no
+    #: entity may cite it. ``None`` means the manifest carries no label for this document.
+    entity_ids: tuple[str, ...] | None = None
+    #: A market-wide document (`shared: true` on the manifest entry): any entity may cite it.
+    shared: bool = False
+    #: Only on the task table (`TASK_DOC_ID`): entity_id -> the [start, end) line of its row.
+    row_ranges: Mapping[str, tuple[int, int]] | None = None
+
+    def admits(self, entity_id: str) -> bool:
+        """May a prediction for `entity_id` cite this document? Shared, or listed on it. The task
+        table admits an entity that has a row; WHICH slice it may cite is `admits_citation`."""
+        if self.row_ranges is not None:
+            return entity_id in self.row_ranges
+        return self.shared or (
+            self.entity_ids is not None and entity_id in self.entity_ids
+        )
+
+    def admits_citation(self, entity_id: str, cite: Mapping[str, Any]) -> bool:
+        """`admits`, and for the task table also: the cited slice lies inside the entity's own row.
+        Offsets that are missing or not ints are left to the span readers (they name no passage)."""
+        if not self.admits(entity_id):
+            return False
+        if self.row_ranges is None:
+            return True
+        start, end = cite.get("span_start"), cite.get("span_end")
+        if not (
+            isinstance(start, int)
+            and not isinstance(start, bool)
+            and isinstance(end, int)
+            and not isinstance(end, bool)
+        ):
+            return True
+        row_start, row_end = self.row_ranges[entity_id]
+        return row_start <= start < end <= row_end
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +200,63 @@ def _sha256_file(fd: int) -> tuple[str, bytes]:
     return "sha256:" + hasher.hexdigest(), b"".join(chunks)
 
 
+def cls_labels(
+    entry: Mapping[str, Any], path: str
+) -> tuple[tuple[str, ...] | None, bool]:
+    """``(entity_ids, shared)`` from one manifest entry, validated. Neither present = unlabelled."""
+    raw_ids = entry.get("entity_ids")
+    raw_shared = entry.get("shared")
+    if raw_shared is not None and raw_shared is not True:
+        raise T4OrganizerFault(
+            f"manifest entry {path!r}: `shared` must be true when present, got {raw_shared!r}"
+        )
+    shared = raw_shared is True
+    entity_ids: tuple[str, ...] | None = None
+    if raw_ids is not None:
+        if not isinstance(raw_ids, list) or not all(
+            isinstance(x, str) and x for x in raw_ids
+        ):
+            raise T4OrganizerFault(
+                f"manifest entry {path!r}: `entity_ids` must be a list of non-empty strings"
+            )
+        if len(set(raw_ids)) != len(raw_ids):
+            raise T4OrganizerFault(
+                f"manifest entry {path!r}: `entity_ids` repeats an id"
+            )
+        entity_ids = tuple(raw_ids)
+    if shared and entity_ids:
+        raise T4OrganizerFault(
+            f"manifest entry {path!r} is both `shared` and entity-labelled; a document is one or "
+            "the other"
+        )
+    return entity_ids, shared
+
+
+def task_table_text(task: Mapping[str, Any]) -> tuple[str, dict[str, tuple[int, int]]]:
+    """The text a ``doc_id: "task"`` span indexes, and each entity's row as [start, end).
+
+    See `TASK_DOC_ID` for the published definition; participants rebuild the same text with the
+    same one-line `json.dumps` (the local check prints it)."""
+    rows = task.get("entities")
+    if not isinstance(rows, list) or not rows:
+        raise T4OrganizerFault("task.json carries no entities[] table")
+    lines: list[str] = []
+    ranges: dict[str, tuple[int, int]] = {}
+    offset = 0
+    for row in rows:
+        if not isinstance(row, Mapping) or not isinstance(row.get("entity_id"), str):
+            raise T4OrganizerFault(
+                "task.json entities[] has a row without an entity_id"
+            )
+        line = json.dumps(row, ensure_ascii=False, separators=(", ", ": "))
+        if row["entity_id"] in ranges:
+            raise T4OrganizerFault("task.json entities[] names an entity twice")
+        ranges[row["entity_id"]] = (offset, offset + len(line))
+        lines.append(line)
+        offset += len(line) + 1
+    return "\n".join(lines), ranges
+
+
 class CorpusIndex:
     """``doc_id -> TrustedDoc``, built from the unit's manifest and nothing else.
 
@@ -189,14 +294,21 @@ class CorpusIndex:
             ) from exc
         try:
             docs: dict[str, TrustedDoc] = {}
-            for relative_path, declared_digest in entries:
+            for relative_path, declared_digest, entity_ids, shared in entries:
                 doc_id = cls._doc_id_from_path(relative_path)
                 if doc_id in docs:
                     raise T4OrganizerFault(
                         f"unit {unit_dir.name!r} declares two corpus files resolving to the same "
                         f"doc_id {doc_id!r}"
                     )
-                docs[doc_id] = cls._load(dir_fd, relative_path, doc_id, declared_digest)
+                docs[doc_id] = cls._load(
+                    dir_fd,
+                    relative_path,
+                    doc_id,
+                    declared_digest,
+                    entity_ids=entity_ids,
+                    shared=shared,
+                )
             return cls(docs)
         finally:
             os.close(dir_fd)
@@ -223,8 +335,16 @@ class CorpusIndex:
         )
 
     @staticmethod
-    def _declared_corpus_entries(manifest: Mapping[str, Any]) -> list[tuple[str, str]]:
-        out: list[tuple[str, str]] = []
+    def _declared_corpus_entries(
+        manifest: Mapping[str, Any],
+    ) -> list[tuple[str, str, tuple[str, ...] | None, bool]]:
+        """``(path, digest, entity_ids, shared)`` per corpus entry.
+
+        The entity label is organizer material read off the trusted manifest entry, never off the
+        document: `entity_ids` (a list of roster ids; empty = about no roster entity) or
+        `shared: true`. A malformed label, or both at once, is an organizer fault.
+        """
+        out: list[tuple[str, str, tuple[str, ...] | None, bool]] = []
         files = manifest.get("files")
         if not isinstance(files, list):
             raise T4OrganizerFault("unit manifest has no files[] array")
@@ -245,8 +365,35 @@ class CorpusIndex:
                     f"manifest entry {path!r} has no lowercase sha256; an unverifiable corpus "
                     "document cannot be a trusted citation target"
                 )
-            out.append((path, "sha256:" + digest))
+            out.append((path, "sha256:" + digest, *cls_labels(entry, path)))
         return out
+
+    @property
+    def labelled(self) -> bool:
+        """Does the manifest carry entity labels at all? A unit without any is an organizer fault
+        for the entity check -- an unlabelled corpus must refuse, never silently admit."""
+        return any(
+            d.shared or d.entity_ids is not None
+            for d in self._docs.values()
+            if d.row_ranges
+            is None  # the task table labels itself; it says nothing of the corpus
+        )
+
+    @property
+    def unlabelled_doc_ids(self) -> tuple[str, ...]:
+        """Documents that carry neither `entity_ids` nor `shared`.
+
+        In a labelled manifest these are an organizer gap, not a participant's wrong document:
+        a citation to one must raise an organizer fault, never `CITATION_WRONG_ENTITY`:
+        refusing the participant for a label the organizers forgot would blame them for it.
+        """
+        return tuple(
+            sorted(
+                d.doc_id
+                for d in self._docs.values()
+                if not d.shared and d.entity_ids is None
+            )
+        )
 
     @staticmethod
     def _doc_id_from_path(relative_path: str) -> str:
@@ -269,7 +416,14 @@ class CorpusIndex:
 
     @classmethod
     def _load(
-        cls, dir_fd: int, relative_path: str, doc_id: str, declared: str
+        cls,
+        dir_fd: int,
+        relative_path: str,
+        doc_id: str,
+        declared: str,
+        *,
+        entity_ids: tuple[str, ...] | None = None,
+        shared: bool = False,
     ) -> TrustedDoc:
         name = relative_path.split("/", 1)[1]
         try:
@@ -320,7 +474,34 @@ class CorpusIndex:
             digest=digest,
             doc_date=doc_date,
             document=document,
+            entity_ids=entity_ids,
+            shared=shared,
         )
+
+    def with_task_table(self, task: Mapping[str, Any], cutoff: _dt.date) -> CorpusIndex:
+        """This index plus the task table as the citable document `TASK_DOC_ID`, dated at the
+        cutoff (organizer material the participant holds before it; never post-cutoff)."""
+        if TASK_DOC_ID in self._docs:
+            raise T4OrganizerFault(
+                f"the corpus declares a document named {TASK_DOC_ID!r}, the reserved doc_id of "
+                "the task table"
+            )
+        text, ranges = task_table_text(task)
+        doc = TrustedDoc(
+            doc_id=TASK_DOC_ID,
+            relative_path="task.json",
+            digest="sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            doc_date=cutoff,
+            document={
+                "doc_id": TASK_DOC_ID,
+                "doc_date": cutoff.isoformat(),
+                "text": text,
+            },
+            entity_ids=tuple(ranges),
+            shared=False,
+            row_ranges=ranges,
+        )
+        return CorpusIndex({**self._docs, TASK_DOC_ID: doc})
 
     # -- lookup ------------------------------------------------------------
     def __len__(self) -> int:

@@ -21,7 +21,12 @@ or consume it as a leading positional (the `ENTRYPOINT ["python", "agent.py"]` p
 `agent.py` declares `parser.add_argument("verb")`). An image that does not accept the verb fails
 every unit — as `127` if the verb is not on `PATH`, as `126` if it is present but not executable,
 or as whatever your own argument parser exits with if it consumes and rejects it. All three are
-recorded as **your** failure, not an organizer fault, and score zero on that unit.
+recorded as **your** failure, not an organizer fault, and the unit takes the pre-committed worst
+value **W = 0.0** (scorer 5.1.0; 5.0.0 used −0.27). On the leaderboard it shows as −0.27
+(leaderboard = −0.27 + 1.27 × analysis). Measured: an absent `answer.json` is `no_output`
+at 0.0, and an empty one is `malformed_output` at 0.0. Zero is the bottom of the `[0, 1]` domain,
+so a unit you fail to produce output for scores no better than the worst admissible answer, and
+below any admissible answer on a unit with a numeric target.
 
 The harness logs `sha256(image)` (anti-cheat), applies the card's CPU, memory, GPU and network
 settings, and mounts only files whose `manifest.json` checksum matches.
@@ -37,11 +42,11 @@ window; setup/provisioning and container creation/execution after activation can
 retrying under the same allocation resets neither the window nor request counters. Credentials
 last at most 7,200 seconds from issue and never beyond that fixed end. Deployment and verification
 remain required before opening; this changes no compute allowance.
-See the [Development runtime guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.4.4/docs/DEVELOPMENT-RUNTIME.md)
+See the [Development runtime guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.0/docs/DEVELOPMENT-RUNTIME.md)
 for applied limits and pending access status. Development settings do not certify Final resources.
 
 Build a `linux/amd64` image identified by its immutable digest. Follow the
-[image submission guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.4.4/docs/IMAGE-SUBMISSIONS.md)
+[image submission guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.0/docs/IMAGE-SUBMISSIONS.md)
 for anonymous public pulls and the organizer confirmation required before using a private mirror.
 A descriptor category or image-access field does not itself make a service available.
 
@@ -50,7 +55,7 @@ A descriptor category or image-access field does not itself make a service avail
 An upload is a **zip, not an image reference**. Push your `linux/amd64` image to a registry that
 allows anonymous pulls by digest (the image submission guide above), write `submission.json`
 with that digest (the sealed descriptor, see the
-[descriptor guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.4.4/starter-packs/track4/SUBMISSION-DESCRIPTOR.md)),
+[descriptor guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.0/starter-packs/track4/SUBMISSION-DESCRIPTOR.md)),
 then let the toolkit seal and pack it:
 
 ```bash
@@ -59,7 +64,7 @@ qfbench2 submission pack --descriptor submission.json --team-number <your team n
 
 `pack` asks for your Team Key on a hidden prompt, derives your `team_id`, and writes
 `submission.zip` containing `submission.json` and `team-claim.json` -- the
-[team-claim guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.4.4/starter-packs/track4/TEAM-CLAIM.md)
+[team-claim guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.0/starter-packs/track4/TEAM-CLAIM.md)
 explains the claim and what happens when it is wrong. Upload `submission.zip` on this track's
 CodaBench competition page from your team's designated CodaBench account; the page link was
 issued to registered teams at the Development opening and is in the participant announcements.
@@ -102,7 +107,7 @@ internet** in official scoring.
 > There is one model access: the **House endpoint** — call `$MODEL_ENDPOINT/v1/chat/completions`
 > with `MODEL_NAME` and the `MODEL_TOKEN` bearer (see the environment contract below). Free,
 > metered per run. **Bring-your-own models and adapters are not part of this competition**
-> (ruling of 2026-09-18): no LoRA adapter path, no in-image model weights path, nothing fetched
+> (since 2026-09-18): no LoRA adapter path, no in-image model weights path, nothing fetched
 > at run time.
 >
 > **No participant API keys exist.** The harness injects none and there is no mechanism for a
@@ -134,7 +139,7 @@ Offline training and the narrow approved-base cutoff exception are defined in th
 
 ### Adapter-only BYO
 
-Withdrawn. This section described a LoRA-adapter option; by the ruling of 2026-09-18 bring-your-own
+Withdrawn. This section described a LoRA-adapter option; since 2026-09-18 bring-your-own
 models and adapters are not part of this competition, and the descriptor no longer accepts the
 `byo-*` categories. Every submission runs against the House model through `MODEL_ENDPOINT`.
 
@@ -253,6 +258,227 @@ everything else to `simulate`. Six of the public dev units (`t3-gbatch-*`) are b
    `track1-coding-public/docs/QFBENCH-HERITAGE.md`. (T2/T3/T4 keep the generic `/output`
    contract above.)
 
+
+## How faithfulness is scored (Track 4, scorer 5.2.0)
+
+Faithfulness is a **per-claim penalty**, not an admission gate. Each claim in
+`entity_predictions[].claims` is either **false** or **neutral**, and each false claim costs a share of the unit. The unit's analysis score is multiplied by
+`1 - F / (F + min(T, 3 × E))`, where F is the number of false claims, T the number of other
+claims and E the number of entities in the unit. A unit with no false claims is not penalised,
+and a unit whose every claim is false scores 0. Other claims dilute the false ones only up to a
+cap of 3 × E claims in total (three times the number of entities, counted over the whole unit,
+not a limit per entity). Up to the cap the cost is the plain share: on a unit with 7 or more
+entities, one false claim among twenty claims costs 5%; with fewer entities the cap is lower,
+so it costs more (on a 1-entity unit, one false claim among twenty costs 1/(1 + 3) = 25%). Past
+the cap, adding more claims does not shrink what a false claim costs (on a 10-entity unit, one
+false claim always costs at least 1/31 of it). Content-free claims are never false and earn
+nothing; beyond the cap they do not change the factor. Nothing
+about faithfulness refuses a unit; structural errors still do (schema, a missing, extra or
+duplicated entity, a non-finite number, an unresolved, undated or post-cutoff citation, a
+malformed citation).
+
+**`faithfulness_rubric` in `task.json` is a legacy field; ignore it.** Every unit's `task.json` still
+carries a `faithfulness_rubric` text. The public practice units' `card.toml` files carry one too;
+the held-out evaluation cards do not. That text describes the
+admission gate used before 5.2.0: a claim counted as supported above an NLI score of 0.5, and a
+submission was admitted when 80% of its claims were supported. Neither scorer 5.2.0 nor the
+reasoning grader reads the field. The rules that apply are the ones in this section and in
+`docs/CONCEPTS.md`.
+
+A claim is **false** when it cites a document the unit manifest does not label for its entity (or
+mark `shared`); cites offsets outside the document; is empty, over 4000 characters or over 400
+judge tokens; states **any** figure that no span it cites carries (read against the whole cited
+span; a span over 8,000 characters anchors no figure); or when the NLI ensemble's three-way
+probability that the cited passage **contradicts** the claim exceeds `contradiction_bar` = 0.9.
+Every other claim is neutral: it is never charged, and it earns nothing here. `penalty_k` = 1
+(the power the factor is raised to), `contradiction_bar` = 0.9 and the cap of 3 × E
+other claims are fixed scorer constants.
+
+**Claims are extractive facts.** State what the cited passage says, with the figures it carries;
+**every figure in a claim must appear in a passage the claim cites**. A figure you derived (a
+change, a ratio, an average) belongs in `submitted_reasons` (the `mechanism`), which is where
+derivations are judged, not in a claim. Exempt: a figure that exactly equals your own scored point
+forecast (or, when the interval is scored, your interval bounds), and a number that is part of one
+of the unit's own entity names or tickers ("Phillips 66", "S&P 500"). Dates, periods, counts of
+periods ("13 weeks") and identifiers are not figures. A claim that quotes a span it cites word for
+word passes the figure check and is not put to the judge; a verbatim quote passes even when the span it cites is over 8,000 characters (the quote is
+looked for in the first 200,000 characters of the span); the 8,000-character cap applies to
+every other claim. A value from the task table is cited
+with `"doc_id": "task"` and a span inside that entity's row of the task table (one line per
+`task.json` `entities` row, `json.dumps(row, ensure_ascii=False, separators=(", ", ": "))`, joined
+by `"\n"`; `qfbench2_track_analysis.corpus.task_table_text` builds it). Evidence earns credit only
+through the reasoning score below. Without the NLI models, `baselines/guardrails_example/citation_rail.check_claim_rules(answer,
+unit_dir)` previews every rule above except the contradiction check, with the scorer's own code.
+The full
+rule, with its reasons, is `docs/CONCEPTS.md`, "Faithfulness"; `python faithfulness/judge.py
+--answer <answer.json> --unit <unit-dir>` previews it locally.
+
+## How reasoning is scored
+
+Track 4 has a second grader beside the analysis score and the faithfulness penalty: an LLM judge
+panel that grades your **reasons**. Your reasons go in one optional top-level field of
+`answer.json`, `submitted_reasons`, next to `entity_predictions`. The reasoning grader reads
+nothing else you write: `claims`, `evidence_trace` and `notes` are not reasons. An answer
+without the field has submitted no reasons.
+
+**The field.** `submitted_reasons` is a list of 1 to 3 reasons. Omit the field to submit none.
+A `submitted_reasons` block that does not match the schema (an empty list, more than 3
+reasons, or a reason missing a required field) makes the whole answer invalid, like any schema
+error, and the unit takes the worst value; run the local checker (`check_submitted_reasons`)
+first. Each reason is an object:
+
+| field | required | what it holds |
+|---|---|---|
+| `reason_id` | yes | a string you choose; the grader does not read it for grading (it renumbers your reasons r1, r2, r3 by position) and does not check that ids are unique, but unique ids keep your reasons apart |
+| `premise` | yes | the evidence-grounded fact |
+| `mechanism` | yes | why that fact moves the answer |
+| `answer_implication` | yes | what it implies for your submitted answer, naming the entities |
+| `scope` | no | an object with `entities`: a list of `entity_id` strings |
+| `citations` | no | a list of `{doc_id, span_start, span_end}` (integers >= 0), in the same character-offset convention as `claims` |
+
+A citation must resolve in the frozen corpus and its document must be dated on or before the
+cutoff; otherwise the judge never sees that passage. The task-table citation `"doc_id": "task"`
+is for claims only: the grader resolves reason citations against the corpus alone, so a
+`"task"` citation in a reason resolves to nothing and the judge never sees it. The judge reads
+the task statement and each entity's id and name, not the rows of the task table: state a task
+value you rely on in the premise; the rest of the reason is judged as usual.
+
+**Duplicate reasons.** A reason whose `premise`, `mechanism` and `answer_implication` equal an
+earlier reason's (compared after Unicode NFC normalisation, with invisible format characters
+removed, case folded and whitespace runs collapsed) is not sent to the judge, so it covers no
+target reason. A different `reason_id` does not make it a new reason.
+
+The schema is `analysis.schema.json` in
+the shared toolkit (`qfbench2_common/schemas/`).
+
+**What the judge sees, and what it grades.** The judge reads the task statement and entity
+list; your per-entity answer (only the fields the unit declares, of `label`, `point_forecast`,
+`interval` and `label_probs`, taken from your `entity_predictions`); each reason's `premise`,
+`mechanism` and `answer_implication`; and the corpus text your citations resolve to. It does
+not see `scope` or the raw citations. It compares your reasons with the unit's hidden target
+reasons and grades four components, `target_reason_coverage`, `evidence_grounding`,
+`inferential_link` and `answer_consistency`, plus the flags `valid_grounded_premise`,
+`has_answer_implication` and `contradiction`, with 5 judge votes per cell. A target reason that
+none of yours covers scores 0 against a denominator of all the unit's target reasons, so
+submitting fewer reasons never scores higher. From Track 4 scorer 5.2.0 the reasoning score is
+a **bonus** on top of the analysis score (final-score/v2):
+
+    final = -0.27 + 1.27 x analysis + 0.25 x reasoning
+
+`analysis` is your 0..1 analysis score after the per-claim faithfulness penalty, shown on the
+old leaderboard scale (`-0.27 + 1.27 x analysis`: 0 shows -0.27, the old worst case, and 1 shows
+1.0); `reasoning` is in [0, 1]. The bonus is uncapped, so the maximum is 1.25. A keyed unit with
+no judged reasons (missing, not judged, or refused for a cap or the deny list) adds 0 to the
+bonus: leaving reasons out never costs anything. A block that fails the schema is different (see
+"The field" above). Reasoning is judged only on keyed (held-out) units, not on public dev units, but
+the format is the same everywhere: practise it on the dev units.
+
+**Old scores and resubmitting.** Leaderboard scores already posted under the earlier scorer stay
+as they were (frozen, not re-scored). A submission made with the new starter package is scored
+with scorer 5.2.0 and this final formula.
+
+**Your answer rows.** The judge's per-entity answer is built from `entity_predictions` in the
+same `answer.json`: each row keeps `entity_id` and the answer fields the unit declares, and every
+other field (`claims`, `rank`, and any of `label`, `point_forecast`, `interval` or
+`label_probs` the unit does not declare) is dropped before the judge sees it. The rows must name
+every entity of the task's entity list exactly once. Their order does not matter: they are put in
+entity-list order. A missing, extra or repeated entity, or a row without a declared field, means
+that unit's reasoning is not judged and scores 0; give every row `label` (classification) or
+`point_forecast` (regression, ranking) besides the required `interval`. A top-level
+`submitted_answer` is not read.
+
+**Which fields a unit declares.** The declaration is part of the unit's reasoning key, which is
+organizer material and not in the unit you receive. In the released units: regression and
+ranking units declare `point_forecast` and `interval`; classification units declare `label`,
+plus `interval` on units that score an interval leg (numeric truth, and `interval_leg` not set
+to false in `card.toml`). No unit declares `label_probs`. An undeclared field is dropped before
+the judge reads your answer; it is not an error and costs nothing.
+
+**Caps.** Over any cap, that unit's reasoning is not judged and scores 0. Nothing is clipped.
+
+| cap | limit, per unit |
+|---|---|
+| one citation: `span_end - span_start` | 8,000 characters (cite the passage, not the document) |
+| your per-entity answer as the judge reads it (each row's `entity_id` and declared fields) | 3,000 bytes |
+| your reasons as the judge reads them (`reason_id`, `premise`, `mechanism`, `answer_implication`) | 6,500 bytes |
+| the cited passages as the judge reads them (each resolved citation's text with its `doc_id`, offsets and reason id) | 46,500 bytes |
+
+The last three are counted the way the grader counts what the judge reads: UTF-8 bytes of compact
+JSON. Plain ASCII text is one byte per character; a line break, quote or backslash is two (it is
+escaped); accented letters, typographic quotes and non-Latin scripts take two to four; a control
+character six; a URI in cited text is masked with the same number of `█` (three bytes each); and
+every citation adds about 75 bytes of JSON around its text plus its `doc_id` and offsets. In practice: about 6,000 characters of
+plain reason text over three reasons, and about 45,000 characters of plain cited text in a few
+citations. The three caps add up to the grader's 56,000-byte limit on what the judge reads from
+you, so an answer within them never reaches that limit. The local checker below reports each
+(`cap_answer_bytes`, `cap_reason_bytes`, `cap_evidence_bytes`).
+
+**Deny list.** The grader refuses a unit's request, and that unit's reasoning scores 0, if the
+text you wrote contains any of these, case-insensitively, as a substring: `leaderboard`,
+`canary`, `://`, `/home/`, `units/`, `reference/`, `outcome.json`, `team_id`, `team name`,
+`participant_id`, `participant name`, `submission_id`, `other submission`. `mechanism` and
+`answer_implication` are always checked. Exempt: the corpus text your citations resolve to,
+and a `premise` that is, as a whole (surrounding whitespace aside), a verbatim quote of a
+corpus document; a premise that adds any word of your own is checked. So do not put URLs or
+file paths in your own words.
+
+**Organiser faults.** If the grader fails on an organiser input (the task, the key, the
+corpus, the judge forms or the policy), the grading run stops, the organiser fixes it and the
+submission is re-graded. A unit that can never be graded is dropped from the reasoning score
+for every submission, never for one submission only.
+
+**Check it locally.** `check_submitted_reasons(answer, corpus, cutoff_date)` in
+`baselines/guardrails_example/citation_rail.py` (standard library only, advisory) flags the
+shape errors, citations the judge would not see, each cap including the byte backstop, and
+deny-list hits. The demo runs it: `python -m baselines.guardrails_example.demo`.
+
+**Worked example** on the public dev unit `t4-EXAMPLE-eps-beat`. The offsets are real: each
+citation slices exactly the quoted premise out of the document's flat text, so both premises
+are verbatim quotes. The label and the reasoning are illustrative, not a statement about the
+outcome.
+
+```json
+{
+  "task_id": "t4-EXAMPLE-eps-beat",
+  "entity_predictions": [
+    {
+      "entity_id": "AAPL",
+      "label": "beat",
+      "interval": {"level": 0.90, "lo": 1.42, "hi": 1.68},
+      "claims": [
+        {
+          "doc_id": "EDGAR_0000320193_10Q_20240202",
+          "span_start": 295,
+          "span_end": 433,
+          "claim": "Services net sales were $23.1 billion in the December quarter, up 11.3% year over year."
+        }
+      ]
+    }
+  ],
+  "submitted_reasons": [
+    {
+      "reason_id": "r1",
+      "premise": "total revenue is expected to grow low- to mid-single digits year over year; Services revenue is expected to grow double digits year over year; gross margin is expected to be between 46.0 and 47.0 percent",
+      "mechanism": "Guidance of revenue growth at a steady 46 to 47 percent gross margin means gross profit, and with it earnings per share, should rise year over year in the March quarter rather than fall.",
+      "answer_implication": "Supports a label of beat for AAPL: earnings growth of that kind puts diluted EPS above the 1.50 consensus.",
+      "scope": {"entities": ["AAPL"]},
+      "citations": [
+        {"doc_id": "EDGAR_0000320193_8K_20240201", "span_start": 711, "span_end": 914}
+      ]
+    },
+    {
+      "reason_id": "r2",
+      "premise": "Services net sales were $23.1 billion for the three months ended December 30, 2023, an increase of $2.3 billion, or 11.3%, year over year.",
+      "mechanism": "Services carry a gross margin far above the company average, so double-digit Services growth lifts profit faster than revenue.",
+      "answer_implication": "Adds to the case that AAPL's earnings clear the consensus by more than the 5% threshold (beat).",
+      "scope": {"entities": ["AAPL"]},
+      "citations": [
+        {"doc_id": "EDGAR_0000320193_10Q_20240202", "span_start": 295, "span_end": 433}
+      ]
+    }
+  ]
+}
+```
 
 ## Open Division tag
 

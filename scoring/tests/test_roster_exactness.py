@@ -1,4 +1,4 @@
-"""T4-3/A13: the trusted roster is the denominator, and answering less can never help.
+"""The trusted roster is the denominator, and answering less can never help.
 
 The measured exploit, on the pre-fix scorer: a three-entity unit, one correct prediction available.
 The honest full-roster answer scored ``0.2033``; answering only the entity it was sure of scored
@@ -46,7 +46,10 @@ def _score(tmp_path: pathlib.Path, answer: dict[str, Any]) -> UnitOutcome:
 def test_honest_full_roster_answer_scores(tmp_path: pathlib.Path) -> None:
     outcome = _score(tmp_path, answer_for())
     assert outcome.state == "participant_success"
-    assert outcome.score == pytest.approx(0.7 * (1 / 3) - 0.3 * abs(1.0 - 0.90))
+    # 5.1.0 interval leg: answer band == naive band -> iq 0.5; 5.2.0: the answer's labels equal
+    # the naive rule's (accuracy 1/3 each), so the anchored prediction leg is exactly 0.5
+    assert outcome.diagnostics["raw_predictive_quality"] == pytest.approx(1 / 3)
+    assert outcome.score == pytest.approx(0.7 * 0.5 + 0.3 * 0.5)
     assert outcome.diagnostics["expected_entity_count"] == 3
     assert outcome.diagnostics["graded_entity_count"] == 3
 

@@ -79,9 +79,9 @@ close. You are being asked to forecast it, not to find it.
 Some families give every row the same document set (a rates cross-section reads one FOMC statement
 and one snapshot for all six maturities); others give each row its own subtree (`corpus_ref` points
 at that entity's filings). Where rows share documents, evidence that supports one row usually does
-not support another: the faithfulness gate builds one hypothesis per roster entity and only the
-citations attached to *that* entity can support it. Pooling one strong citation across every row is
-structurally unable to help.
+not support another: each claim is checked only against the citations attached to it, and a
+citation to a document the unit manifest does not label for that claim's entity (or mark `shared`)
+makes the claim false. Pooling one strong citation across every row cannot help.
 
 ### 3. Which columns are given and which are the answer
 
@@ -112,19 +112,20 @@ the ordering against a metric where larger is better; `README.md` gives the meas
 
 ---
 
-## Intervals: coverage is a target, not a quantity to maximise
+## Intervals: width costs, and so does a miss
 
-The calibration leg of the composite is a **penalty on distance from the interval level**:
+From scorer 5.1.0 the interval leg of the composite is an interval-score ratio against the unit's
+declared naive interval (`reference/naive_answer.json`):
 
-    composite = w_acc x predictive_quality - w_cal x |interval_coverage - interval_level|
+    interval_quality = naive_IS / (naive_IS + IS)
+    composite = w_acc x predictive_quality + w_cal x interval_quality
 
-Coverage is therefore *not* something to maximise. Coverage of 1.0 is penalised exactly as far from
-the target as coverage of 0.80 is, and pushing empirical coverage past the level costs you score.
-There is no width, sharpness or Winkler term anywhere in the scorer, so narrowness earns nothing
-either — which means "submit a trivially wide interval" is not the mistake it is often assumed to
-be, and neither is "submit a tight one". The single thing the scorer asks of your intervals is that
-across the task set the truth falls inside them about as often as the level says. `README.md` and
-`CONCEPTS.md` carry the measured single-unit numbers.
+Per row the interval score `IS` is the width `hi - lo` plus `2/alpha` (20 at a 90% level) times
+the distance by which the truth falls outside `[lo, hi]`, averaged over the roster. An interval
+with the naive rule's score gets 0.5. A trivially wide interval scores badly, and so does a tight
+one that misses: aim for the narrowest interval that still contains the value. Coverage is
+reported as a diagnostic but is not scored. `README.md` and `CONCEPTS.md` carry the measured
+single-unit numbers.
 
 ---
 

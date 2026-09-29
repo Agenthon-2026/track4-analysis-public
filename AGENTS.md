@@ -79,8 +79,8 @@ the role address the shipped unit cards carry in `author_email`: `qfbench@neurip
    validated against `analysis.schema.json`, the scoring parameters are
    `units/t4-EXAMPLE-eps-beat/card.toml [scoring.params]`, the container environment is
    SUBMISSION_CLI.md's
-   container-environment table. Hand-restated facts are how the 2026-08 prose-drift class
-   (39 findings) happened; the guards in `baselines/tests/test_docs_match_artifacts.py` fail CI
+   container-environment table. Hand-restating a fact is how prose and artifact drift apart;
+   the guards in `baselines/tests/test_docs_match_artifacts.py` fail CI
    on the highest-traffic violations (thresholds, repo paths in fenced blocks, env-var names,
    the `[environment]` grant), and they fail closed if a patrolled document goes missing.
 
@@ -110,8 +110,22 @@ the role address the shipped unit cards carry in `author_email`: `qfbench@neurip
   updating both the code and `docs/CONCEPTS.md`)
 - `scoring/scoring.py` — a re-export shim; the implementation is `qfbench2_track_analysis/`
 - `qfbench2_track_analysis/` — the ONE Track-4 scoring implementation (do not change the gate
-  names, the composite formula, the metric domain `[-0.27, 1.0]` or the worst-case value
-  `W = -0.27` without a review by the track lead)
+  names, the composite formula, the metric domain `[0.0, 1.0]` or the worst-case value
+  `W = 0.0` without organizer review; W shows as -0.27 on the leaderboard, where
+  leaderboard = -0.27 + 1.27 × analysis). Current scorer: 5.2.0. Faithfulness is a per-claim
+  penalty, not an admission gate: the composite is multiplied by the soft floor
+  `1 - F/(F + min(T, 3E))` (F false claims, T the others, E the roster count), with k = 1 and a
+  contradiction bar of 0.9 as fixed constants. Every figure in a claim must appear in a span it
+  cites (task-table values are cited with `doc_id: "task"`); entity names and tickers are exempt,
+  a cited span over 8,000 characters anchors no figure, a claim over 400 judge tokens is
+  malformed, and a verbatim quote is not sent to the judge. Classification and ranking
+  prediction legs are anchored to the unit's naive rule, and a unit without an interval leg is
+  scored on the prediction leg alone. Scorer 5.1.0 introduced the interval-score leg against the
+  naive interval (domain `[-0.27, 1.0]` -> `[0.0, 1.0]`, W `-0.27` -> `0.0`). A
+  `submitted_reasons` block that does not match the schema (an empty list, more than 3 reasons,
+  or a reason missing a required field) makes the whole answer invalid, like any schema error;
+  run the local checker (`baselines/guardrails_example`) first. Leaving reasons out never costs
+  anything.
 
 ---
 

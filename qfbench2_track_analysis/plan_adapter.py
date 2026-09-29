@@ -16,10 +16,14 @@ neither can be removed on the strength of the other.
 
 * ``scoring_params.target_type`` is a **closed three-value enum** (``classification | regression |
   ranking``), identical to the hub's. An unrecognized value is refused rather than defaulted,
-  which is the whole point of T4-3: the pre-fix scorer fell back to label accuracy.
+  which is the whole point: the pre-fix scorer fell back to label accuracy.
 * ``scoring_params.composite_weights`` names exactly ``accuracy`` and ``calibration``, summing
-  to 1, because ``W = -w_calibration * interval_level`` is the frozen worst case and a plan whose
-  weights do not sum to 1 silently moves the domain the leaderboard is clipped into.
+  to 1: the composite is ``w_a * quality + w_c * interval_quality`` (scorer 5.1.0; through 5.0.0
+  ``W = -w_calibration * interval_level``), and weights that do not sum to 1 silently move the range
+  the leaderboard is clipped into.
+* ``scoring_params.interval_leg`` (C1 1.3.0, optional, default true) is passed through when the
+  entry carries it, and must be a boolean. ``ScoringParams`` refuses ``false`` off classification,
+  and ``hydrate`` refuses a mounted card whose ``interval_leg`` disagrees with the plan.
 """
 
 from __future__ import annotations
@@ -72,7 +76,7 @@ def entity_roster_from_entry(entry: RosterEntry) -> EntityRoster:
 def labels_from_entry(entry: RosterEntry) -> tuple[str, ...] | None:
     """The unit's label vocabulary from the signed plan (C1 1.3.0, `scoring_params.labels`).
 
-    This is the platform half of `Agenthon2026#123` / private #89 F1. `align_predictions` refuses
+    This is the platform half of the label-vocabulary check. `align_predictions` refuses
     a submitted label outside `roster.labels`; the local path fills that field from `task.json`
     (`EntityRoster.from_task`), the platform path built the roster from the plan entry, and the
     entry did not carry the vocabulary -- so the check ran locally and silently did not run on
@@ -120,16 +124,24 @@ def scoring_params_from_entry(entry: RosterEntry) -> dict[str, Any]:
     pair = (float(weights["accuracy"]), float(weights["calibration"]))
     if abs(sum(pair) - 1.0) > 1e-9:
         raise T4OrganizerFault(
-            f"C1 entry {entry.unit_handle!r}: composite_weights must sum to 1; W is "
-            "-w_calibration * interval_level and a different sum moves the frozen domain"
+            f"C1 entry {entry.unit_handle!r}: composite_weights must sum to 1; the composite "
+            "is w_a * quality + w_c * interval_quality and a different sum moves its range"
         )
-    return {
+    params: dict[str, Any] = {
         "target_type": str(target_type),
         "interval_level": float(raw["interval_level"]),
         "faithfulness_threshold": float(raw["faithfulness_threshold"]),
         "tau_citation": float(raw["tau_citation"]),
         "composite_weights": pair,
     }
+    if "interval_leg" in raw:
+        leg = raw["interval_leg"]
+        if not isinstance(leg, bool):
+            raise T4OrganizerFault(
+                f"C1 entry {entry.unit_handle!r}: interval_leg must be a boolean, got {leg!r}"
+            )
+        params["interval_leg"] = leg
+    return params
 
 
 def trusted_inputs_for(

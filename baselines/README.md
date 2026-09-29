@@ -42,12 +42,13 @@ predictions on small tables (a few hundred rows) without any task-specific train
 If your agent cannot outperform TabPFN on predictive quality, the evidence corpus and agentic
 reasoning have added no value on tabular features alone.
 
-**Limitation.** Text-blind agents cannot produce grounded citations. A text-blind submission
-scores zero faithfulness and is ineligible (composite = None). TabPFN is listed to establish
-the text-blind predictive floor, not as a submittable strategy.
+**Limitation.** Text-blind agents cannot produce grounded citations. From scorer 5.2.0
+faithfulness is a per-claim penalty, not an admission gate, so a text-blind answer with no claims
+is scored on its predictions and intervals alone, and it earns no reasoning bonus. TabPFN is
+listed to establish the text-blind predictive floor, not as a submittable strategy.
 
-Expected performance: classification accuracy ~0.45–0.55, faithfulness gate pass rate: 0%,
-composite score: ineligible.
+Expected performance: classification accuracy ~0.45–0.55 (a design estimate, not measured under
+scorer 5.2.0).
 
 ### Baseline 2 — Gradient Boosting (text-blind tabular, all target types)
 
@@ -56,12 +57,13 @@ This is the dominant classical method for tabular data in industry and competiti
 TabPFN, it supports classification, regression, and ranking targets natively.
 
 **Why it is here.** Gradient boosting is the most competitive text-blind baseline for larger
-cross-sections. It also provides a skill-score denominator for regression tasks (the
-`baseline_MAE` used in the scorer's skill computation is derived from a gradient-boosting
-prediction, not a naive mean, for fairer comparison).
+cross-sections. It is not the scorer's regression reference: the scorer compares a regression
+answer with the unit's declared naive rule (`reference/naive_answer.json`), as
+`naive_MAE / (naive_MAE + MAE)`, so an answer with the naive rule's error scores 0.5.
 
-Expected performance: classification accuracy ~0.48–0.58, faithfulness gate pass rate: 0%,
-composite score: ineligible.
+Expected performance: classification accuracy ~0.48–0.58 (a design estimate, not measured under
+scorer 5.2.0). Like Baseline 1, it carries no claims, so it is scored on its predictions and
+intervals alone.
 
 ### Baseline 3 — Retrieval-Augmented LLM-over-Rows with Calibration Head (submittable)
 
@@ -79,11 +81,12 @@ composite score: ineligible.
 4. A **calibration head** (a small quantile regression model) converts the LLM's raw confidence
    and retrieval strength into a calibrated 90% prediction interval.
 
-This is the only baseline that can produce grounded citations and therefore the only one that can
-be eligible for the composite score.
+This is the only baseline that can produce grounded citations and reasons, and therefore the
+only one that can earn the reasoning bonus. Its claims are subject to the per-claim faithfulness
+penalty.
 
-Expected performance: classification accuracy ~0.50–0.60, faithfulness gate pass rate ~65–75%,
-composite score ~0.30–0.40.
+Expected performance: classification accuracy ~0.50–0.60 (a design estimate, not measured under
+scorer 5.2.0).
 
 ---
 
@@ -213,7 +216,7 @@ filter is not the same as being eligible.
 | Non-empty citations | Every claim must include at least one citation with a `doc_id` that appears in `manifest.json`. |
 | Valid span offsets | `span_start` and `span_end` must be non-negative integers; `text[span_start:span_end]` must resolve to a non-empty string. |
 | Embargo compliance | Every cited `doc_date` must be `<= cutoff_date` from `task.json`. |
-| NLI entailment | The NLI entailment score between the cited span text and the claim text must exceed `0.5` (`tau_citation`), evaluated offline by `EnsembleNLIJudge`; the submission is admissible when at least 80% of claims are supported (`faithfulness_threshold = 0.80`). |
+| Faithfulness (scorer 5.2.0) | A per-claim penalty, not a gate: the unit score is multiplied by `1 - F / (F + min(T, 3 × E))` (F false claims, T other claims, E entities: each false claim costs a share, other claims beyond 3 × E in total do not dilute it). A claim is false when it cites another entity's document, an out-of-range span, is malformed, states a figure no cited span carries, or when the NLI ensemble's three-way contradiction probability exceeds 0.9 (see `docs/CONCEPTS.md`, "Faithfulness"). |
 
 ---
 
@@ -334,17 +337,21 @@ Before submitting your Docker image, verify every item:
 
 ## Evaluation metrics (recap)
 
+Scorer 5.2.0. The full rules are in the top-level `README.md`, "Scoring formula", and in
+`docs/CONCEPTS.md`.
+
 | Metric | Weight | Description |
 |--------|--------|-------------|
-| Predictive quality (classification) | 70% | Fraction of entity rows with correct `label`. |
-| Predictive quality (regression) | 70% | Skill score = 1 - MAE / baseline_MAE, clamped to [0, 1]. |
-| Predictive quality (ranking) | 70% | Spearman rank correlation rescaled to [0, 1]. |
-| Calibration penalty | 30% | **Subtracted**, not added: `\|interval_coverage - interval_level\|`, where `interval_coverage` is the fraction of entity rows whose true value falls in [lo, hi]. Coverage is a target to hit, not a quantity to maximise. |
-| Faithfulness (gate) | — | Fraction of the **entity roster** whose prediction is entailed by a span cited for it; must be >= 0.80 to be eligible. |
+| Predictive quality (classification) | 70% | Fraction of entity rows with the correct `label`, anchored so that the unit's declared naive rule (`reference/naive_answer.json`) scores 0.5. |
+| Predictive quality (regression) | 70% | `naive_MAE / (naive_MAE + MAE)` against the unit's declared naive rule: the naive rule's error scores 0.5, an exact answer 1.0. |
+| Predictive quality (ranking) | 70% | Spearman rank correlation rescaled to [0, 1], anchored so that the stronger of the naive rule and a constant forecast scores 0.5. |
+| Interval quality | 30% | `naive_IS / (naive_IS + IS)`: your mean interval score against the unit's declared naive interval. The interval score is the width `hi - lo` plus a charge for every miss, so an interval can be too wide as well as too narrow. |
+| Faithfulness (penalty) | — | Not a gate. The unit score is multiplied by `1 - F / (F + min(T, 3 × E))` (F false claims, T other claims, E entities); no false claims means no penalty. |
 
-Composite = 0.7 × predictive_quality − 0.3 × |interval_coverage − interval_level| (interval_level
-= 0.90). The calibration term is a coverage **penalty**, not a reward — adding raw coverage would
-incentivise trivially wide intervals. Higher composite wins. Leaderboard sorted `desc`. Ineligible
-submissions (failed faithfulness or embargo) receive `score = None`. Units whose resolved outcome
-has no numeric target (pure-label tasks) have no calibration leg: the coverage term is dropped and
-composite = 0.7 × predictive_quality.
+Composite = 0.7 × predictive_quality + 0.3 × interval_quality (`interval_level` = 0.90), then
+multiplied by the faithfulness factor. Higher wins; leaderboard sorted `desc`. A unit that fails a
+structural check (schema, roster, an unresolved, undated or post-cutoff citation) takes the worst
+value W = 0.0, shown as -0.27 on the leaderboard (leaderboard = -0.27 + 1.27 × analysis). A unit
+with no interval leg (a pure-label unit, or a classification unit that declares
+`interval_leg = false`) scores the prediction leg alone: composite = predictive_quality, not
+capped at 0.7.

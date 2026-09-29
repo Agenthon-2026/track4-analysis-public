@@ -13,6 +13,10 @@ Measured on a three-entity unit, everything identical except the interval:
 The entire calibration leg is `w_cal * |interval_coverage - interval_level|`, so on any single
 unit widening strictly helps. Advice to narrow was not merely unenforced, it was backwards.
 
+(That was scorer 5.0.0. From 5.1.0 the interval leg is a Gneiting-Raftery interval score against
+the naive interval, `interval_score` in the code; the docs describe it under that name, so every
+term below stays patrolled.)
+
 This test is deliberately keyed on the CODE, not on a hardcoded list of banned words: a term is
 forbidden in the docs exactly when no Python file implements it. If someone later ships a real
 Winkler term, this test goes green on its own rather than having to be remembered.
@@ -82,7 +86,7 @@ def test_no_doc_promises_a_scoring_term_the_scorer_does_not_implement(
     assert not missing, (
         f"patrolled document(s) missing: {missing}. This guard used to `continue` past a missing "
         "file, which meant deleting a document turned its check green. Restore the file or remove "
-        "it from _DOCS in a commit that says why (repo rule R3)."
+        "it from _DOCS in a commit that says why (the fail-closed rule)."
     )
     offenders = []
     for name in _DOCS:

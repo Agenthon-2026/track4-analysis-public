@@ -1,6 +1,6 @@
-"""The issue #22 ruling: a unit whose outcome carries no numeric target has no calibration leg.
+"""A unit whose outcome carries no numeric target has no calibration leg.
 
-The sealed scorer has implemented this since 2026-08-11 (`final_scorer.py` types `interval_cov` as
+The sealed scorer applies the same rule (`final_scorer.py` types `interval_cov` as
 `float | None` and says so at its module docstring). The public scorer did not, and the remediation
 made it worse in two directions at once: a NULL target was silently coerced to `0.0` — so coverage
 was measured against an invented number — while a non-numeric one raised an organizer fault, which
@@ -31,7 +31,9 @@ def _outcome(*ys: object) -> dict[str, object]:
 
 def test_every_row_numeric_keeps_the_calibration_leg() -> None:
     """POSITIVE CONTROL. The ordinary unit is unaffected by any of this."""
-    labels, values = _true_vectors(_outcome(1.0, 2.0, 3.0), ROSTER)
+    labels, values = _true_vectors(
+        _outcome(1.0, 2.0, 3.0), ROSTER, target_type="regression"
+    )
     assert labels == ["up", "up", "up"]
     assert values == [1.0, 2.0, 3.0]
 
@@ -39,10 +41,17 @@ def test_every_row_numeric_keeps_the_calibration_leg() -> None:
 def test_no_row_numeric_is_a_pure_label_unit_not_an_error() -> None:
     """`None` for the value vector means: drop the calibration leg, do not abort.
 
+    `target_type="classification"` here is load-bearing, not incidental: only a classification
+    unit may be pure-label, and the same outcome under `regression` or `ranking`
+    is an organizer fault (`test_target_type_needs_numeric_truth.py`). Do not generalise this
+    call back to a numeric target type.
+
     Before the fix this path returned `[0.0, 0.0, 0.0]` and coverage was computed against zeros —
     a measured-looking number produced from nothing.
     """
-    labels, values = _true_vectors(_outcome(None, None, None), ROSTER)
+    labels, values = _true_vectors(
+        _outcome(None, None, None), ROSTER, target_type="classification"
+    )
     assert labels == ["up", "up", "up"]
     assert values is None
 
@@ -55,14 +64,14 @@ def test_a_mixed_outcome_is_an_organizer_fault() -> None:
     numeric target and others do not is malformed, and that is an organizer problem.
     """
     with pytest.raises(T4OrganizerFault, match="numeric target for 2 of 3"):
-        _true_vectors(_outcome(1.0, 2.0, None), ROSTER)
+        _true_vectors(_outcome(1.0, 2.0, None), ROSTER, target_type="regression")
 
 
 @pytest.mark.parametrize("bad", ["1.0", True, [], {}])
 def test_a_non_numeric_target_is_still_refused(bad: object) -> None:
     """Absent means pure-label; a string or a bool means malformed. Do not guess between them."""
     with pytest.raises(T4OrganizerFault, match="neither a number nor absent"):
-        _true_vectors(_outcome(bad, bad, bad), ROSTER)
+        _true_vectors(_outcome(bad, bad, bad), ROSTER, target_type="regression")
 
 
 def test_a_nonfinite_target_is_an_organizer_fault() -> None:
@@ -74,4 +83,4 @@ def test_a_nonfinite_target_is_an_organizer_fault() -> None:
     """
     for bad in (float("nan"), float("inf"), float("-inf")):
         with pytest.raises(T4OrganizerFault, match="nonfinite numeric target"):
-            _true_vectors(_outcome(bad, 2.0, 3.0), ROSTER)
+            _true_vectors(_outcome(bad, 2.0, 3.0), ROSTER, target_type="regression")

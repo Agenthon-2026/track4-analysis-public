@@ -5,6 +5,10 @@ that (wrongly) added a live-fetched, post-cutoff press snippet to its retrieval
 pool, cited it, and also emitted one claim with broken span offsets. The rail
 flags both before submission; the one clean claim passes.
 
+It then checks the answer's ``submitted_reasons`` (the field the reasoning
+grader reads): two clean reasons quoting the corpus, and one planted reason
+whose mechanism pastes a URL, which the deny list refuses.
+
 Usage::
 
     python -m baselines.guardrails_example.demo \
@@ -19,7 +23,13 @@ import json
 import sys
 from pathlib import Path
 
-from .citation_rail import CorpusDoc, check_answer, filter_retrieved, load_corpus
+from .citation_rail import (
+    CorpusDoc,
+    check_answer,
+    check_submitted_reasons,
+    filter_retrieved,
+    load_corpus,
+)
 
 #: A SYNTHETIC post-cutoff document (this text is invented for the demo). It
 #: stands in for something the agent fetched live instead of using the frozen
@@ -74,8 +84,56 @@ def build_draft_answer(task: dict, corpus: dict[str, CorpusDoc]) -> dict:
                 ],
             }
         ],
+        "submitted_reasons": build_reasons(corpus),
         "notes": {"demo": "draft answer with planted rail violations"},
     }
+
+
+def _quote(corpus: dict[str, CorpusDoc], doc_id: str, first: str, last: str) -> dict:
+    """A citation whose span is exactly the passage from ``first`` through ``last``."""
+    text = corpus[doc_id].text
+    start = text.find(first)
+    end = text.find(last, start) + len(last)
+    assert start >= 0 and end > start, "demo passage not found in corpus text"
+    return {"doc_id": doc_id, "span_start": start, "span_end": end}
+
+
+def build_reasons(corpus: dict[str, CorpusDoc]) -> list[dict]:
+    """Two clean reasons (verbatim-quote premises) and one planted deny-list hit."""
+    guidance = _quote(
+        corpus, "EDGAR_0000320193_8K_20240201", "total revenue is expected", "47.0 percent"
+    )
+    services = _quote(
+        corpus, "EDGAR_0000320193_10Q_20240202", "Services net sales were", "year over year."
+    )
+
+    def text_of(c: dict) -> str:
+        return corpus[c["doc_id"]].text[c["span_start"]:c["span_end"]]
+
+    return [
+        {  # clean
+            "reason_id": "r1",
+            "premise": text_of(guidance),
+            "mechanism": "Revenue growth at a steady gross margin lifts gross profit year over year.",
+            "answer_implication": "Supports a beat for AAPL.",
+            "scope": {"entities": ["AAPL"]},
+            "citations": [guidance],
+        },
+        {  # clean
+            "reason_id": "r2",
+            "premise": text_of(services),
+            "mechanism": "High-margin Services growth lifts profit faster than revenue.",
+            "answer_implication": "Adds to the case for a beat for AAPL.",
+            "scope": {"entities": ["AAPL"]},
+            "citations": [services],
+        },
+        {  # planted deny-list hit — a URL in the agent's own words
+            "reason_id": "r3",
+            "premise": "Analysts expect a strong quarter.",
+            "mechanism": "See https://example.com/preview for the consensus preview.",
+            "answer_implication": "Supports a beat for AAPL.",
+        },
+    ]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -116,9 +174,16 @@ def main(argv: list[str] | None = None) -> int:
     for f in findings:
         print(f"  {f}")
 
+    reason_findings = check_submitted_reasons(answer, corpus, cutoff)
+    print("\nSubmitted-reasons findings:")
+    for f in reason_findings:
+        print(f"  {f}")
+
     codes = sorted(f.code for f in findings)
     expected = ["bad_span", "stale_doc"]
-    ok = codes == expected
+    reason_codes = sorted(f.code for f in reason_findings)
+    expected_reasons = ["deny_list"]
+    ok = codes == expected and reason_codes == expected_reasons
     n_claims = sum(len(e["claims"]) for e in answer["entity_predictions"])
     print(
         f"\n{n_claims} claims checked: {n_claims - len(findings)} clean, "
@@ -131,7 +196,10 @@ def main(argv: list[str] | None = None) -> int:
             "embargo and faithfulness gates are the authority on every submission."
         )
         return 0
-    print(f"DEMO FAIL — expected findings {expected}, got {codes}.")
+    print(
+        f"DEMO FAIL — expected findings {expected} / {expected_reasons}, "
+        f"got {codes} / {reason_codes}."
+    )
     return 1
 
 

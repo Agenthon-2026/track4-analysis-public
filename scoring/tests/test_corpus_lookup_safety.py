@@ -1,4 +1,4 @@
-"""T4-5: citation resolution is a dictionary lookup, and the embargo gate fails closed.
+"""Citation resolution is a dictionary lookup, and the embargo gate fails closed.
 
 Two measured defects, opposite in direction.
 

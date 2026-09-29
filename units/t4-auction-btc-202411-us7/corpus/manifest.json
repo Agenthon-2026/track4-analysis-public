@@ -13,7 +13,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "AUC_10Y_20241105"
+      ]
     },
     {
       "path": "corpus/TDIRECT_AUCTIONS_20Y_20241031.json",
@@ -25,7 +28,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "AUC_20Y_20241120"
+      ]
     },
     {
       "path": "corpus/TDIRECT_AUCTIONS_2Y_20241031.json",
@@ -37,7 +43,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "AUC_2Y_20241125"
+      ]
     },
     {
       "path": "corpus/TDIRECT_AUCTIONS_30Y_20241031.json",
@@ -49,7 +58,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "AUC_30Y_20241106"
+      ]
     },
     {
       "path": "corpus/TDIRECT_AUCTIONS_3Y_20241031.json",
@@ -61,7 +73,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "AUC_3Y_20241104"
+      ]
     },
     {
       "path": "corpus/TDIRECT_AUCTIONS_5Y_20241031.json",
@@ -73,7 +88,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "AUC_5Y_20241126"
+      ]
     },
     {
       "path": "corpus/TDIRECT_AUCTIONS_7Y_20241031.json",
@@ -85,7 +103,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "AUC_7Y_20241127"
+      ]
     },
     {
       "path": "corpus/TDIRECT_UPCOMING_20241030.json",
@@ -97,7 +118,8 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "shared": true
     }
   ]
 }

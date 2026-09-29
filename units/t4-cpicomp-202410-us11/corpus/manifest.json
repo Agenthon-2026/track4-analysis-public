@@ -13,7 +13,8 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "shared": true
     },
     {
       "path": "corpus/BLS_CPI_RELEASE_20241010.json",
@@ -25,7 +26,8 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "shared": true
     },
     {
       "path": "corpus/EIA_GASREGW_20241028.json",
@@ -37,7 +39,8 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "shared": true
     }
   ]
 }

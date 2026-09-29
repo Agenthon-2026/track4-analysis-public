@@ -5,7 +5,15 @@
   "target": {
     "name": "eps_outcome",
     "type": "classification",
-    "labels": ["beat", "miss", "inline"]
+    "labels": ["beat", "miss", "inline"],
+    "label_assertions": {
+    
+  "beat": "will report Q2 FY2024 diluted earnings per share more than 5% above the analyst consensus estimate",
+    
+  "miss": "will report Q2 FY2024 diluted earnings per share more than 5% below the analyst consensus estimate",
+    
+  "inline": "will report Q2 FY2024 diluted earnings per share within 5% of the analyst consensus estimate"
+    }
   },
   "prompt": "Given the frozen evidence corpus assembled as of 2024-03-15, predict for each company in the table below whether its Q2 FY2024 diluted EPS will beat, miss, or land inline with the analyst consensus estimate (threshold: 5%). Support each prediction with citations from the frozen corpus.",
   "cutoff_date": "2024-03-15",

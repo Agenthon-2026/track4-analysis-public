@@ -12,7 +12,7 @@ prompt          = "Given the frozen evidence corpus assembled as of 2024-03-15, 
 cutoff_date     = "2024-03-15"   # question/embargo cutoff: cited evidence must predate this
 resolution_date = "2024-05-05"
 adversarial     = false
-faithfulness_rubric = "Every claim must cite a passage from a corpus document whose doc_date <= 2024-03-15. A roster entity's prediction counts as supported when some cited span entails it above tau_citation = 0.5; the unit is admissible when at least faithfulness_threshold = 0.80 of the ROSTER's predictions are supported (the denominator is the roster, not the number of claims written)."
+faithfulness_rubric = "Every claim must cite a passage from a corpus document whose doc_date <= 2024-03-15. A claim is supported when a passage it cites entails the claim text above tau_citation = 0.5 (the judge is asked about your claim; a cited document must be one the manifest labels with the citing entity or marks shared, and a claim whose figures appear in none of its cited passages is unsupported before any model runs); the unit is admissible when at least faithfulness_threshold = 0.80 of the claims are supported (the denominator is the number of claims). Whether the evidence supports the forecast is not this gate's question."
 
 [metadata]
 author_name              = "QFBench2 Track-4 Lead"
@@ -40,11 +40,11 @@ metric              = "analysis_composite"
 admissibility_gates = ["g0_integrity", "g1_schema", "g2_cutoff_resource", "g3_domain_semantics"]
 
 [scoring.params]
-faithfulness_threshold = 0.80        # admission gate: the supported fraction of the ROSTER must be >= this
+faithfulness_threshold = 0.80        # retired in scorer 5.2.0: only 0.80 is accepted and it means "per-claim penalty" (penalty_k = 1, contradiction_bar = 0.9)
 interval_level         = 0.90
 target_type            = "classification"
 composite_weights      = [0.7, 0.3]   # [predictive_quality, interval_coverage]
-tau_citation           = 0.5          # per-citation NLI threshold: claim supported if entailment > tau
+tau_citation           = 0.5          # bar for the recorded prediction_relevance diagnostic only (scorer 5.2.0)
 nli_judge_ensemble     = ["cross-encoder/nli-deberta-v3-large", "MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli"]
 
 [environment]

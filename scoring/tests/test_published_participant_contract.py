@@ -31,6 +31,7 @@ from .synthetic import (
     StubJudge,
     answer_for,
     build_unit,
+    write_naive_answer,
 )
 
 _REPO = pathlib.Path(__file__).resolve().parents[2]
@@ -50,6 +51,8 @@ def _score(
     unit = build_unit(
         tmp_path, target_type=target_type, with_outcome=True, entities=entities
     )
+    if target_type == "regression":
+        write_naive_answer(unit, entities)
     out = tmp_path / "res"
     out.mkdir(exist_ok=True)
     (out / "answer.json").write_text(json.dumps(answer), encoding="utf-8")
@@ -141,7 +144,8 @@ def test_the_rank_integer_in_point_forecast_inverts_the_ordering(
     )
     assert outcome.state == "participant_success"
     assert outcome.diagnostics["predictive_quality"] == pytest.approx(0.0)
-    assert outcome.score == pytest.approx(-0.03)
+    # 5.0.0 measured -0.03 (= 0 - 0.3*0.1). 5.1.0: 0.7*0 + 0.3*iq, iq 0.5 (band == naive band).
+    assert outcome.score == pytest.approx(0.15)
 
 
 def test_the_same_ordering_in_point_forecast_scores_full_marks(
@@ -151,7 +155,8 @@ def test_the_same_ordering_in_point_forecast_scores_full_marks(
         tmp_path, _ranking_answer(rank_into="point_forecast"), target_type="ranking"
     )
     assert outcome.diagnostics["predictive_quality"] == pytest.approx(1.0)
-    assert outcome.score == pytest.approx(0.67)
+    # 5.0.0: 0.67. 5.1.0: 0.7*1 + 0.3*0.5.
+    assert outcome.score == pytest.approx(0.85)
 
 
 def test_label_cannot_change_a_ranking_score_at_all(tmp_path: pathlib.Path) -> None:
@@ -192,7 +197,7 @@ def test_a_constant_point_forecast_scores_the_neutral_value_not_full_marks(
     against the pre-fix ranking code (position tie-breaking) the constant answer measures
     predictive_quality 1.0 / composite 0.67, and the two `pytest.approx` assertions below fail.
 
-    Row-order independence is still pinned here: #28's `align_predictions` re-indexes against
+    Row-order independence is still pinned here: `align_predictions` re-indexes against
     the roster, so serialisation order cannot move the score. An earlier draft asserted the
     opposite and failed, which is how the roster-ordering guarantee got pinned rather than
     assumed.
@@ -219,11 +224,12 @@ def test_a_constant_point_forecast_scores_the_neutral_value_not_full_marks(
 
     # Neutral, not full marks. These are the assertions the exploit fails.
     assert forward.diagnostics["predictive_quality"] == pytest.approx(0.5)
-    assert forward.score == pytest.approx(0.32)
+    # 5.0.0: 0.32 and 0.67 below. 5.1.0 adds 0.3*iq (iq 0.5) instead of subtracting 0.03.
+    assert forward.score == pytest.approx(0.50)
 
     # ... and the honest answer is strictly better, which is the whole point.
     assert honest.diagnostics["predictive_quality"] == pytest.approx(1.0)
-    assert honest.score == pytest.approx(0.67)
+    assert honest.score == pytest.approx(0.85)
     assert (
         forward.diagnostics["predictive_quality"]
         < honest.diagnostics["predictive_quality"]

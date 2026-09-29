@@ -10,7 +10,8 @@ classification tasks, a numeric estimate for regression, or a ranked order acros
 ranking tasks), return a 90% confidence interval, and supply **citations** to passages in a frozen
 evidence corpus that ground each claim. If the citations do not hold up under an NLI (natural
 language inference) check — the automated system decides whether the cited passage actually
-supports the claim — the submission is ineligible regardless of how accurate its predictions were.
+supports the claim — each claim the check finds false costs its share of the unit's score, however
+accurate the predictions were.
 
 This folder is the **public starter kit** — everything you need to build, test, and submit a
 Track 4 agent. The hidden test questions and their ground-truth outcomes live in a private
@@ -135,8 +136,8 @@ it must be a permutation of 1..n over the full entity roster.
 
 The common mistake, measured: putting the **rank integer** in `point_forecast` (1 = highest)
 inverts the ordering against a metric where larger is better, and scores
-`predictive_quality = 0.0`, composite `-0.03`, against `1.0` / `0.67` for the metric values
-themselves. Omitting `point_forecast` on a ranking unit is refused outright. In every case there is one entry in
+`predictive_quality = 0.0`, composite `0.15`, against `1.0` / `0.85` for the metric values
+themselves (scorer 5.1.0, interval equal to the naive rule's; 5.0.0 measured `-0.03` / `0.67`). Omitting `point_forecast` on a ranking unit is refused outright. In every case there is one entry in
 `entity_predictions` per entity row.
 
 Use the executable `analysis.schema.json` bundled with `qfbench2-common` for required fields
@@ -150,7 +151,8 @@ the prediction appropriate to its target type, as described above.
 **These are not partial-credit penalties.** A missing `interval.lo` or `interval.hi`, an empty or
 absent `claims` array, or an `interval.level` other than the card's — on *any* single entity row —
 fails `g1_schema` for the **whole unit**: the unit is scored `t4.schema_invalid`
-(`SCHEMA_INVALID_OUTPUT`) at the worst-case `W = -0.27`, and no coverage or faithfulness number is
+(`SCHEMA_INVALID_OUTPUT`) at the worst-case `W = 0.0` (5.0.0: `-0.27`; 0.0 shows as -0.27 on the leaderboard, where
+leaderboard = -0.27 + 1.27 × analysis), and no coverage or faithfulness number is
 computed at all. Verified by running the scorer on each case.
 
 ### Runtime constraints
@@ -166,11 +168,11 @@ computed at all. Verified by running the scorer on each case.
 
 The image-size row remains the published recommendation and rejection policy; it is not a
 verified automatically enforced image-size quota. The image-layer limit is a different resource.
-See the [image submission guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.4.4/docs/IMAGE-SUBMISSIONS.md)
+See the [image submission guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.0/docs/IMAGE-SUBMISSIONS.md)
 for anonymous public pulls and organizer-confirmed private mirrors.
 
 For CPU, memory and GPU settings, read the unit card and the
-[Development runtime guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.4.4/docs/DEVELOPMENT-RUNTIME.md).
+[Development runtime guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.0/docs/DEVELOPMENT-RUNTIME.md).
 The `api` category does not remove a card's GPU grant for permitted local code or authorize
 an additional model server. The unit clock includes container creation and any required pull;
 the ingestion stage has a separate 12-hour clock across sequential units, and scoring has its
@@ -192,7 +194,7 @@ the harness (`g2`).
 endpoint (`$MODEL_ENDPOINT`); your contribution is the prompts, harness, system prompts, agents
 and permitted local numerical artifacts. No participant API keys are injected and none exist
 (policy 2026-08-04) — the house endpoint is the only reachable model. **Bring-your-own models
-and adapters are not part of this competition** (ruling of 2026-09-18): the former
+and adapters are not part of this competition** (since 2026-09-18): the former
 `byo-large` / `byo-small` categories are invalid since toolkit 2.4.3, and an upload that still
 carries one is held by the organizer's intake and never run.
 
@@ -252,9 +254,9 @@ a ceiling rather than a floor (`nemoguardrails` and `nvidia-nat` both pin `<3.14
 Track 4 inherits scoring utilities from the shared toolkit repository. Install them with:
 
 ```bash
-# Pin toolkit v2.4.4 for the current submission commands and fixtures.
-# The installed package reports version 2.4.4.
-pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.4#subdirectory=common"
+# Pin toolkit v2.5.0 for the current submission commands and fixtures.
+# The installed package reports version 2.5.0.
+pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.5.0#subdirectory=common"
 ```
 
 > **Pin a tag, never a branch.** Installing from a moving ref means your local result and your
@@ -285,52 +287,71 @@ four are inputs to the gate this is previewing: the roster and the target schema
 `manifest.json` declares. Without them the check would have nothing to score against and would
 fail closed.
 
-The check runs the same DeBERTa NLI ensemble (two models, averaged entailment probability) and the
-same shared scoring primitives the official scorer uses. Per **roster entity** — not per sentence
-you wrote — it:
+The check runs the same DeBERTa NLI ensemble and the same public scoring functions the official
+scorer uses. From scorer 5.2.0 faithfulness is a **per-claim penalty**, not a pass/fail gate: the
+unit's score is multiplied by `1 - F / (F + min(T, 3 × E))` (F false claims, T other claims, E
+entities): each false claim costs a share of the unit, other claims beyond 3 × E in total do not dilute
+that cost, and a unit with no false claims is not penalised. Per **claim** the check:
 
 1. Aligns your `entity_predictions[]` against the unit's entity roster. A missing, duplicated or
-   unknown entity fails here, exactly as it fails the gate.
+   unknown entity fails here, exactly as it fails the scorer, and refuses the unit.
 2. Resolves each cited `doc_id` through the unit's manifest and checks its `doc_date` against the
-   cutoff. An unresolved, undated or post-cutoff citation is a **violation**, not a shrug.
-3. Builds the **canonical hypothesis** for that entity — one sentence derived from the values you
-   submitted (`label` / `point_forecast` / `rank` / `interval`) plus the trusted task schema — and
-   asks the judge whether a cited span entails *that*.
-4. Reports the fraction of roster entities whose prediction is supported (a span entailing above
-   `tau_citation`, 0.5).
+   cutoff. An unresolved, undated or post-cutoff citation refuses the unit.
+3. Marks the claim **false** if it cites a document the manifest does not label with the citing
+   entity (or mark `shared`), or a slice outside the document (a `"task"` citation outside the
+   citing entity's row of the task table counts as the wrong entity), or if its text is empty,
+   over 4000 characters or over 400 judge tokens.
+4. Applies the figure check: **every** figure in the claim must appear in a span it cites, read
+   against the whole cited span. A claim with a figure no cited span carries is **false** and is
+   not put to the judge. A span over 8,000 characters anchors no figure; your own scored values
+   and numbers inside the unit's own entity names or tickers are exempt; a word-for-word quote of
+   a cited span passes whole, even when that span is over 8,000 characters.
+5. Asks the judge for the probability that each cited passage **contradicts your `claim` text**
+   (three-way, averaged over both models). Above `contradiction_bar` = 0.9 the claim is
+   **false**; otherwise it is neutral. A word-for-word quote of a cited span is not put to the
+   judge.
 
-**The hypothesis is your prediction, never your prose.** Your `claim` text is parsed and shown, but
-it is not what the judge is asked about, so accurately describing a passage you cited cannot make a
-wrong prediction faithful. Writing more claims cannot help either: the denominator is the roster.
+**The hypothesis is your claim; the premise is the passage you cited.** Quote it, paraphrase it,
+or state what it shows, with the figures it carries. A claim that is neutral is never charged and
+earns nothing here; whether your evidence supports your forecast is scored by reasoning grading.
 
-Output example (the exemplar unit, one entity):
+Output example (the exemplar unit, one entity, one claim; the probability is illustrative):
 ```
-Scoring 1 prediction(s) from '/tmp/my_answer.json' against unit 't4-EXAMPLE-eps-beat'
-(1 participant claim(s) parsed; the faithfulness denominator is the trusted roster: 1)
+Scoring 1 claim(s) for 1 roster entit(y/ies) from '/tmp/my_answer.json' against unit 't4-EXAMPLE-eps-beat'
 ------------------------------------------------------------
-  AAPL: 0.2455 [FAIL]
-    hypothesis: 'The eps outcome of Apple Inc. (AAPL) is inline. The 90% prediction interval for the eps outcome of Apple Inc. (AAPL) is 1.35 to 1.65.'
+  AAPL: P(contradiction) 0.0021 [neutral] ok
+    claim: 'Services net sales rose to $23,117 million in the first quarter of fiscal 2024 from $20,766 million a year earlier.'
 
-Faithfulness (fraction of supported predictions): 0.0000
-GATE: FAIL
+False claims: 0 of 1; faithfulness factor (multiplies the unit's score): 1.0000
+GATE: PASS (admitted; faithfulness factor 1.0000)
 ```
 
-A faithfulness score below 0.80 means your submission is ineligible. Cite a passage that supports
-the prediction — or change the prediction — before submitting.
+With the served judge backend (`T4_JUDGE_BACKEND=served`), which returns only two-way
+entailment, the contradiction check cannot run: the check prints "Contradiction check: NOT
+APPLIED", checks only the other four reasons, and the preview is not rankable. Use the local
+ensemble for the full check.
 
-**The faithfulness threshold is 0.80 for admission.** Each individual citation is checked
-against the per-citation NLI threshold of 0.5 (`tau_citation` in `card.toml`): an entity's
-prediction is supported if some cited span entails it above 0.5. The admission gate then requires
-that at least 80% of the roster's predictions are supported (`faithfulness_threshold = 0.80`).
+Each false claim is listed with its reasons (`wrong_entity`, `out_of_range`, `malformed`,
+`unanchored`, `contradicted`). Fix the citation or the claim, or drop the claim, before
+submitting: each false claim costs a share of the unit, at least 1/(F + 3 × E) of it (F false claims,
+E entities; for example one false claim among twenty costs 5% on a 7-entity unit and 25% on a
+1-entity unit, and padding beyond 3 × E claims does not shrink that share), and a unit whose every
+claim is false scores 0.
 
-**The current NLI quantity is two-way.** Each member uses the entailment-versus-contradiction
-normalization returned by the single-candidate call in
-[`DeBERTaNLIJudge.entail`](faithfulness/judge.py), then the ensemble averages those values.
-Neutral is omitted from that normalization; this is not a three-way probability or proof that
-the passage is non-neutral. The hypothesis comes from the submitted prediction, as described
-above. This release preserves that quantity and the existing scoring formula. A later scoring
-change requires a versioned release; this clarification does not establish a completed
-calibration or runtime-equivalence result.
+**The check establishes that your claims are about the right entity, cite real passages, carry
+the passages' figures and are not contradicted by them**, not that the prediction was derived
+from them. The unit's `card.toml` still carries `faithfulness_threshold = 0.80`: from 5.2.0 that
+value is read as "use the per-claim penalty" and nothing else. `penalty_k` = 1 and
+`contradiction_bar` = 0.9 are fixed scorer constants, the same for every unit and every entrant; a
+card or plan that names either is refused. See `docs/CONCEPTS.md`, "Faithfulness", which also
+defines the task-table citation (`"doc_id": "task"`).
+
+**Two NLI quantities.** [`DeBERTaNLIJudge.entail`](faithfulness/judge.py) returns the two-way
+entailment-versus-contradiction normalization of the single-candidate call (neutral omitted);
+it is unchanged and now feeds only the recorded `prediction_relevance` diagnostic.
+`DeBERTaNLIJudge.contradiction` reads the same forward pass as a three-way softmax (entailment,
+neutral, contradiction) and returns the contradiction probability; the ensemble averages it over
+the two models. Neither is a calibrated probability on financial text.
 
 ---
 
@@ -367,25 +388,35 @@ python baselines/baseline_agent.py \
 
 ## Scoring formula
 
-The composite score for an eligible submission (faithfulness ≥ 0.80, no embargo violations) is:
+Scorer 5.2.0. For a unit that passes the structural checks (schema, roster, citations resolved
+and dated on or before the cutoff):
 
 ```
-composite = w_acc × predictive_quality − w_cal × |interval_coverage − interval_level|
+composite = w_acc × predictive_quality + w_cal × interval_quality
+score     = composite × (1 − F / (F + min(T, 3 × E)))
+            F = false claims, T = other claims, E = entities in the unit; no false claims -> × 1
 ```
 
-Default weights: `w_acc = 0.70`, `w_cal = 0.30`; `interval_level = 0.90`. The calibration
-term is a **penalty** on the gap between empirical coverage and the nominal level (adding raw
-coverage would reward trivially wide intervals). The `predictive_quality` component depends on
-the task's target type -- declared as `target.type` in `task.json`, and mirrored as
-`target_type` under `[scoring.params]` in `card.toml`:
+Default weights: `w_acc = 0.70`, `w_cal = 0.30`; `interval_level = 0.90`. The faithfulness
+factor is described above and in `docs/CONCEPTS.md`, "Faithfulness". `interval_quality =
+naive_IS / (naive_IS + IS)` compares your mean interval score with the unit's declared naive
+interval (0.5 = as good as the naive rule's; see "Interval calibration" below). The
+`predictive_quality` component depends on the task's target type -- declared as `target.type` in
+`task.json`, and mirrored as `target_type` under `[scoring.params]` in `card.toml`:
 
-- **classification**: accuracy (fraction of rows where predicted `label` matches ground truth).
-- **regression**: MAE skill against the **cross-entity mean of the realized values** —
-  `clamp(1 - MAE / baseline_MAE, 0, 1)`. A perfect model scores 1.0, a model no better than that
-  mean scores 0.0, and a *worse*-than-baseline model also scores 0.0: the skill score is clamped
-  at zero, it does not go negative.
-- **ranking**: Spearman rank correlation **rescaled to [0, 1]** as `(rho + 1) / 2`. A perfect
-  ordering scores 1.0, a random one about 0.5, a perfectly reversed one 0.0.
+- **classification**: accuracy (fraction of rows where predicted `label` matches ground truth),
+  **anchored to the naive rule**.
+- **regression**: a ratio against the unit's **declared naive rule** (`reference/naive_answer.json`)
+  — `naive_MAE / (naive_MAE + MAE)`, both mean absolute errors over the roster. An exact answer
+  scores 1.0, an answer with the naive rule's error scores 0.5, and a worse answer falls toward 0
+  as its error grows; the score never goes negative.
+- **ranking**: Spearman rank correlation **rescaled to [0, 1]** as `(rho + 1) / 2`, **anchored to
+  the naive rule**.
+
+**Anchored to the naive rule** (classification and ranking, from 5.2.0): the raw quality is
+mapped so that 0 stays 0, the unit's declared naive rule (`reference/naive_answer.json`) scores
+**0.5**, and a perfect answer scores 1, linearly in between on each side. The anchor is the
+stronger of the naive rule's own quality and, on a ranking unit, a constant forecast's 0.5.
 
 On every target type, a missing entity or required prediction, or a nonfinite supplied numeric
 value, fails validation for the whole unit before predictive quality is computed. The unit
@@ -394,17 +425,18 @@ no row is dropped to shrink a denominator. See
 [`align_predictions`](qfbench2_track_analysis/alignment.py) and
 [`score_unit`](qfbench2_track_analysis/scoring.py).
 
-`interval_coverage` is the empirical 90% coverage across the question set (fraction of rows
-where the true value falls inside `[lo, hi]`). A unit whose resolved outcome has **no numeric
-target** (a pure-label task, e.g. "which action does the company take on its guidance") has no
-calibration leg: the coverage term is dropped and `composite = w_acc × predictive_quality`
-(same 0.7 ceiling as a perfectly calibrated numeric unit). When a prompt asks for a numeric
-quantity, put that numeric — in the prompt's units — in `point_forecast` / `interval`; an
+A unit whose resolved outcome has **no numeric target** (a pure-label task, e.g. "which action
+does the company take on its guidance"), or a classification unit that declares
+`interval_leg = false`, has no interval leg: from 5.2.0 its composite is the (anchored) prediction
+leg alone, `composite = predictive_quality`, not capped at `w_acc`. When a prompt asks for a
+numeric quantity, put that numeric — in the prompt's units — in `point_forecast` / `interval`; an
 interval on a probability never covers a dollar `y`.
 
-Participant failures, including failed faithfulness or embargo checks, receive the committed
-worst-case unit score `W = -0.27` and remain in the evaluation denominator. This differs from
-an organizer fault, which aborts scoring instead of assigning a participant score. A local
+Participant failures (a structural error, an embargo violation) receive the committed
+worst-case unit score `W = 0.0` (shown as -0.27 on the leaderboard, where leaderboard =
+-0.27 + 1.27 × analysis) and remain in the evaluation denominator. Faithfulness never
+refuses a unit; it multiplies the score. This differs from an organizer fault, which aborts
+scoring instead of assigning a participant score. A local
 smoke check without resolved outcomes also returns no numerical score and is explicitly
 non-rankable; it checks the interface, not prediction accuracy or production faithfulness.
 
@@ -417,7 +449,7 @@ non-rankable; it checks the interface, not prediction accuracy or production fai
 # baselines/requirements.txt is comments only -- the minimal baseline is standard library
 # by design -- so this line installs nothing. It is here because step 4 and step 5 need the
 # shared toolkit, which brings jsonschema with it.
-pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.4#subdirectory=common"
+pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.5.0#subdirectory=common"
 
 # 2. Run the RAG baseline
 python baselines/baseline_agent.py \
@@ -453,25 +485,33 @@ PYTHONPATH=$PWD qfbench2-smoke units/t4-EXAMPLE-eps-beat /tmp --track analysis
 ## Development tips
 
 **Tabular features first.** Start by building a text-blind tabular model on the feature columns.
-Its accuracy is your floor. Then add retrieval and verify that faithfulness passes before worrying
-about composite score.
+Its accuracy is your floor. Then add retrieval and check your claims with the local faithfulness
+preview before worrying about composite score.
 
-**Watch the faithfulness gate.** Fluent prose does not earn it: the judge is asked whether a cited
-span entails your *prediction*, not whether it entails the sentence you wrote about it. Cite the
-passage that moves the number you are forecasting, and run
-`faithfulness/judge.py --answer … --unit …` frequently — do not leave it as a final check.
+**Watch the faithfulness penalty.** Each false claim costs a share of the unit, and adding more
+than 3 × E claims in total (E entities) does not dilute it. Keep claims
+extractive: every figure in a claim must be in a span it cites, and computed figures go in
+`submitted_reasons`. Run `faithfulness/judge.py --answer … --unit …` frequently — do not leave it
+as a final check. A `submitted_reasons` block that does not match the schema (an empty list, more
+than 3 reasons, or a reason missing a required field) makes the whole answer invalid, like any
+schema error, so run the local checker (`check_submitted_reasons` in
+`baselines/guardrails_example/citation_rail.py`) first; leaving reasons out never costs anything.
+The reasons contract is in `SUBMISSION_CLI.md`, "How reasoning is scored".
 
 **Stale-filing detection.** Apply a strict `doc_date <= cutoff_date` filter in every retrieval
 call. Do not rely on post-processing to discard stale citations — the stale information may have
 already affected your reasoning.
 
-**Interval calibration.** There is **no width or sharpness penalty anywhere in the scorer**, so a
-trivially wide 90% CI is not merely tolerated — it is rewarded. Measured on a three-entity unit,
-everything identical except the interval: `[1.4, 1.9]` (missing the value) scored **-0.037** with
-coverage 0.0, while `[-1e9, 1e9]` scored **+0.203** with coverage 1.0. The only calibration term is
-`|interval_coverage - 0.90|`, so what it actually asks for is *empirical coverage near 90%* across
-the task set — not narrowness. Intervals that are too wide hurt you only by pushing coverage above
-0.90; on any single unit, widening strictly helps. The learned calibration head is **not shipped** (see `baselines/README.md`); the minimal
+**Interval calibration.** From scorer 5.1.0 the interval leg is an `interval_score` ratio against
+the unit's declared naive interval: per row, the width `hi - lo` plus `2/alpha` (20 at 90%) times
+the distance by which the truth falls outside `[lo, hi]`, averaged over the roster, and scored as
+`naive / (naive + yours)` — 0.5 means as good as the naive rule's interval. Width now costs, and so
+does a miss. Measured on a three-entity unit, everything identical except the interval (naive band
+`[0.5, 3.5]`): the naive band itself scored **+0.383**, `[1.4, 1.9]` (missing all three values)
+**+0.297**, and `[-1e9, 1e9]` **+0.233** — the trivially wide interval is now the worst of the three.
+(5.0.0 scored only `|interval_coverage - 0.90|`, and the same two intervals measured **-0.037** and
+**+0.203**, so widening strictly helped.) Aim for the narrowest interval that still contains the
+value. The learned calibration head is **not shipped** (see `baselines/README.md`); the minimal
 baseline emits a fixed-band interval, which is a floor to beat, not a starting point to tune.
 
 **Firewall.** Your agent runs on a restricted network: no open internet, egress only through the

@@ -77,7 +77,8 @@ def test_everything_trusted_is_loaded_from_unit_dir(tmp_path: pathlib.Path) -> N
     assert ctx["_cutoff"] == dt.date(2024, 3, 15)  # parsed from task.json, as a date
     assert ctx["card"]  # from card.toml
     assert ctx["_roster"].entity_ids == ("AAPL",)  # from task.json entities[]
-    assert len(ctx["_corpus"]) == 2  # from the digest-verified manifest
+    # from the digest-verified manifest, plus the reserved task-table document `task` (5.2.0)
+    assert len(ctx["_corpus"]) == 3
     lookup = ctx["_corpus"].lookup()
     assert lookup("EDGAR_0000320193_10Q_20240202")["doc_date"] == "2024-02-02"
     with pytest.raises(KeyError):
@@ -104,6 +105,8 @@ def test_a_resolved_outcome_produces_a_real_score(tmp_path: pathlib.Path) -> Non
             {"outcomes": [{"entity_id": "AAPL", "y": 1.0, "true_label": "beat"}]}
         )
     )
+    # 5.1.0: a unit with numeric truth needs its declared naive interval (interval leg).
+    (unit / "reference" / "naive_answer.json").write_text(json.dumps(ANSWER))
     ctx = _ctx(tmp_path, unit=unit)
     verdict = build_smoke_verifier(ctx).run(ctx)
     assert verdict.admissible is True

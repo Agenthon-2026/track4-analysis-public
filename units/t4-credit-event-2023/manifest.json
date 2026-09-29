@@ -7,8 +7,8 @@
       "path": "card.toml",
       "role": "input",
       "license": "CC-BY-4.0",
-      "sha256": "416d7df90d74923763d739bd581222029412f7186ac177e66a0093452d57b961",
-      "bytes": 3815,
+      "sha256": "a940844508cff2d768b9701f9fcd7105049a004f555cbcc83f899d8eac8b2bb3",
+      "bytes": 4070,
       "split": "public-dev",
       "redistributable": true
     },
@@ -16,8 +16,8 @@
       "path": "task.json",
       "role": "input",
       "license": "CC-BY-4.0",
-      "sha256": "af48128eba8dbc8f762903fe822002ae1a7709e7d054b0ac8afb57a7eb92ee65",
-      "bytes": 3946,
+      "sha256": "95749b24fc9150b11ca7bf57a1f292e96dc65d6c1545982b826b6edc9618d984",
+      "bytes": 4088,
       "split": "public-dev",
       "redistributable": true
     },
@@ -31,7 +31,10 @@
       "redistributable": true,
       "cutoff": "2023-03-31",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "RAD"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000716006_10K_20230209.json",
@@ -43,7 +46,10 @@
       "redistributable": true,
       "cutoff": "2023-03-31",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "YELL"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000764478_10K_20230317.json",
@@ -55,7 +61,10 @@
       "redistributable": true,
       "cutoff": "2023-03-31",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "BBY"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000794367_10K_20230324.json",
@@ -67,7 +76,10 @@
       "redistributable": true,
       "cutoff": "2023-03-31",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "M"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000878927_10K_20230222.json",
@@ -79,7 +91,10 @@
       "redistributable": true,
       "cutoff": "2023-03-31",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "ODFL"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000886158_10Q_20230126.json",
@@ -91,7 +106,10 @@
       "redistributable": true,
       "cutoff": "2023-03-31",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "BBBY"
+      ]
     },
     {
       "path": "corpus/EDGAR_0001618921_10Q_20230328.json",
@@ -103,7 +121,10 @@
       "redistributable": true,
       "cutoff": "2023-03-31",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "WBA"
+      ]
     },
     {
       "path": "corpus/EDGAR_0001813756_10K_20230329.json",
@@ -115,14 +136,17 @@
       "redistributable": true,
       "cutoff": "2023-03-31",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "WE"
+      ]
     },
     {
       "path": "corpus/manifest.json",
       "role": "input",
       "license": "CC-BY-4.0",
-      "sha256": "cedb8f3867eb6babcc479099411e17f6ac9d7aa5568c43b7494fe3fded9b7503",
-      "bytes": 4148,
+      "sha256": "29b8fa110bf4c24739b61bf2d9c51dcf6f818e06f51e42c6d758d98f2ba11c42",
+      "bytes": 4508,
       "split": "public-dev",
       "redistributable": true
     }

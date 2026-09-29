@@ -34,12 +34,22 @@ from typing import Any
 from .codes import T4OrganizerFault, T4ParticipantFailure, T4Reason
 
 __all__ = [
+    "CLAIM_TEXT_MAX_CHARS",
     "TARGET_TYPES",
     "AlignedPredictions",
+    "Claim",
     "EntityRoster",
     "align_predictions",
     "validated_label_vocabulary",
 ]
+
+#: The longest claim text the judge is asked about. Set well above any sentence that states one
+#: thing about one entity, and well above what the judge can read in any case: the NLI models
+#: truncate their input at 512 tokens, so text past the cap could not affect the verdict even if
+#: it were passed. A longer string is not a claim, and an unbounded hypothesis is a way to spend
+#: the judge's time. Over the cap the claim is recorded as malformed and counts as unsupported;
+#: it never reaches the judge and it never refuses the unit by itself.
+CLAIM_TEXT_MAX_CHARS = 4000
 
 #: Closed. An unknown target type is refused rather than defaulting to classification — the old
 #: fallback meant a card typo silently changed which metric the leaderboard reported.
@@ -140,6 +150,20 @@ class EntityRoster:
 
 
 @dataclass(frozen=True, slots=True)
+class Claim:
+    """One participant claim: the sentence asserted (NFC, stripped) and the citations it cites.
+
+    `text` is the hypothesis the judge is asked about. `malformed` is
+    set when the text is empty or over `CLAIM_TEXT_MAX_CHARS`: such a claim has no usable
+    hypothesis, counts as unsupported, and is never put to the judge.
+    """
+
+    text: str
+    citations: tuple[Mapping[str, Any], ...]
+    malformed: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class AlignedPredictions:
     """Per-entity arrays in **trusted roster order**, one element per roster entry, no gaps."""
 
@@ -151,10 +175,22 @@ class AlignedPredictions:
     ranks: tuple[int | None, ...]
     citations_by_entity: tuple[tuple[Mapping[str, Any], ...], ...]
     claim_texts_by_entity: tuple[tuple[str, ...], ...]
+    #: The claims as the participant grouped them: each with its own text and its own
+    #: citations. `citations_by_entity` is the flattening of this, kept for the embargo and
+    #: entity checks, which are per citation.
+    claims_by_entity: tuple[tuple[Claim, ...], ...] = ()
 
     @property
     def count(self) -> int:
         return len(self.entity_ids)
+
+    def all_claims(self) -> list[tuple[str, Claim]]:
+        """Every claim with the entity it was offered for, in roster order."""
+        return [
+            (entity_id, claim)
+            for entity_id, group in zip(self.entity_ids, self.claims_by_entity)
+            for claim in group
+        ]
 
     def all_citations(self) -> list[Mapping[str, Any]]:
         return [cite for group in self.citations_by_entity for cite in group]
@@ -277,9 +313,51 @@ def _interval(
     return lo, hi
 
 
+def _claim_text(claim: Mapping[str, Any]) -> tuple[str, bool]:
+    """The claim's sentence as the judge will see it, and whether it is usable at all."""
+    raw = (
+        claim.get("claim") if isinstance(claim.get("claim"), str) else claim.get("text")
+    )
+    if not isinstance(raw, str):
+        return "", True
+    text = unicodedata.normalize("NFC", raw).strip()
+    if not text or len(text) > CLAIM_TEXT_MAX_CHARS:
+        return text, True
+    return text, False
+
+
+_OFFSET_KEYS = ("span_start", "span_end")
+
+
+def _with_int_offsets(cite: Mapping[str, Any], entity_id: str) -> Mapping[str, Any]:
+    """`cite` with its span offsets as ints, or a CITATION_MALFORMED refusal (5.1.2, the offsets guard).
+
+    The published schema types the offsets ``integer``, and JSON Schema counts a number with a
+    zero fractional part as an integer: ``120.0`` validates. So a whole-number float is read as
+    the integer it is. A number with a fractional part, a boolean or any other type is not an
+    offset the schema admits and is refused here, by name -- before 5.1.2 it was dropped as an
+    out-of-range citation, and the participant saw a claim-level reason for a malformed field.
+    A missing offset is left for the citation readers, which treat it as naming no passage.
+    """
+    fixed: dict[str, int] = {}
+    for key in _OFFSET_KEYS:
+        value = cite.get(key)
+        if value is None or (isinstance(value, int) and not isinstance(value, bool)):
+            continue
+        if isinstance(value, float) and math.isfinite(value) and value.is_integer():
+            fixed[key] = int(value)
+            continue
+        raise T4ParticipantFailure(
+            T4Reason.CITATION_MALFORMED,
+            f"entity {entity_id} has a citation whose {key} is not an integer",
+            invalid_row_count=1,
+        )
+    return {**cite, **fixed} if fixed else cite
+
+
 def _citations(
     row: Mapping[str, Any], entity_id: str
-) -> tuple[tuple[Mapping[str, Any], ...], tuple[str, ...]]:
+) -> tuple[tuple[Mapping[str, Any], ...], tuple[str, ...], tuple[Claim, ...]]:
     claims = row.get("claims")
     if not isinstance(claims, list) or not claims:
         raise T4ParticipantFailure(
@@ -289,6 +367,7 @@ def _citations(
         )
     cites: list[Mapping[str, Any]] = []
     texts: list[str] = []
+    grouped: list[Claim] = []
     for claim in claims:
         if not isinstance(claim, Mapping):
             raise T4ParticipantFailure(
@@ -305,23 +384,24 @@ def _citations(
                     f"entity {entity_id} has a claim whose citations[] is empty or malformed",
                     invalid_row_count=1,
                 )
+            nested = [_with_int_offsets(c, entity_id) for c in nested]
             cites.extend(nested)
+            own: tuple[Mapping[str, Any], ...] = tuple(nested)
         else:
             # Multi-entity ("camp B") shape: the claim object IS the citation.
-            cites.append(claim)
-        text = (
-            claim.get("claim")
-            if isinstance(claim.get("claim"), str)
-            else claim.get("text")
-        )
-        texts.append(text if isinstance(text, str) else "")
+            cite = _with_int_offsets(claim, entity_id)
+            cites.append(cite)
+            own = (cite,)
+        text, malformed = _claim_text(claim)
+        texts.append(text)
+        grouped.append(Claim(text=text, citations=own, malformed=malformed))
     if not cites:
         raise T4ParticipantFailure(
             T4Reason.CITATION_MALFORMED,
             f"entity {entity_id} has claims but no citations",
             invalid_row_count=1,
         )
-    return tuple(cites), tuple(texts)
+    return tuple(cites), tuple(texts), tuple(grouped)
 
 
 def align_predictions(
@@ -360,6 +440,7 @@ def align_predictions(
     ranks: list[int | None] = []
     cites: list[tuple[Mapping[str, Any], ...]] = []
     texts: list[tuple[str, ...]] = []
+    grouped: list[tuple[Claim, ...]] = []
 
     for entity_id in roster.entity_ids:
         row = by_id[entity_id]
@@ -413,9 +494,10 @@ def align_predictions(
         else:
             ranks.append(raw_rank)
 
-        entity_cites, entity_texts = _citations(row, entity_id)
+        entity_cites, entity_texts, entity_claims = _citations(row, entity_id)
         cites.append(entity_cites)
         texts.append(entity_texts)
+        grouped.append(entity_claims)
 
     supplied_ranks = [r for r in ranks if r is not None]
     if supplied_ranks:
@@ -443,4 +525,5 @@ def align_predictions(
         ranks=tuple(ranks),
         citations_by_entity=tuple(cites),
         claim_texts_by_entity=tuple(texts),
+        claims_by_entity=tuple(grouped),
     )

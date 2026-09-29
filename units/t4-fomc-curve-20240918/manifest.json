@@ -7,8 +7,8 @@
       "path": "card.toml",
       "role": "input",
       "license": "CC-BY-4.0",
-      "sha256": "d134dec61208746df40aef180886b4973d443a6a9c1b2e069181be85a37bc4b5",
-      "bytes": 4127,
+      "sha256": "b993e576200d4725402724bf49ae5eeeb5c20a4da41891f2cfe392de8e3fb377",
+      "bytes": 4397,
       "split": "public-dev",
       "redistributable": true
     },
@@ -31,7 +31,8 @@
       "redistributable": true,
       "cutoff": "2024-09-19",
       "pii_stripped": true,
-      "source": "FederalReserve"
+      "source": "FederalReserve",
+      "shared": true
     },
     {
       "path": "corpus/FOMC_STATEMENT_20240918.json",
@@ -43,7 +44,8 @@
       "redistributable": true,
       "cutoff": "2024-09-19",
       "pii_stripped": true,
-      "source": "FederalReserve"
+      "source": "FederalReserve",
+      "shared": true
     },
     {
       "path": "corpus/RATES_SNAPSHOT_20240919.json",
@@ -55,14 +57,15 @@
       "redistributable": true,
       "cutoff": "2024-09-19",
       "pii_stripped": true,
-      "source": "compiled_public_data"
+      "source": "compiled_public_data",
+      "shared": true
     },
     {
       "path": "corpus/manifest.json",
       "role": "input",
       "license": "CC-BY-4.0",
-      "sha256": "daf0d83ec59a069bc61581810420358ac82673064f4e554f191df7183e1d2297",
-      "bytes": 1548,
+      "sha256": "f11efab815c1a179787c4a061179c9294a8c1bd6bbf8f1ce4b2c802e1318a96c",
+      "bytes": 1614,
       "split": "public-dev",
       "redistributable": true
     }

@@ -13,7 +13,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-10",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "JPM"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000019617_8K_20240820.json",
@@ -25,7 +28,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-10",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "JPM"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000036104_10Q_20240806.json",
@@ -37,7 +43,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-10",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "USB"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000036104_8K_20240912.json",
@@ -49,7 +58,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-10",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "USB"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000070858_10Q_20240730.json",
@@ -61,7 +73,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-10",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "BAC"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000072971_10Q_20240801.json",
@@ -73,7 +88,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-10",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "WFC"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000713676_10Q_20240802.json",
@@ -85,7 +103,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-10",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "PNC"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000831001_10Q_20240802.json",
@@ -97,7 +118,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-10",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "C"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000831001_8K_20240910.json",
@@ -109,7 +133,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-10",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "C"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000886982_10Q_20240802.json",
@@ -121,7 +148,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-10",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "GS"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000886982_8K_20240919.json",
@@ -133,7 +163,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-10",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "GS"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000895421_10Q_20240805.json",
@@ -145,7 +178,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-10",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "MS"
+      ]
     }
   ]
 }

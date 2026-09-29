@@ -67,7 +67,7 @@ def test_the_quote_resolves_to_the_span_it_claims(tmp_path: Path) -> None:
 
 
 def test_ranking_rows_do_not_all_carry_the_same_forecast(tmp_path: Path) -> None:
-    """A constant vector is the degenerate answer from public #47.
+    """A constant vector is the degenerate answer on a ranking unit.
 
     On a ranking unit the scorer reads `point_forecast` and nothing else, so an identical
     vector scores by the sealed roster's order rather than by the prediction. No shipped

@@ -13,7 +13,10 @@
       "split": "public-dev",
       "cutoff": "2023-07-14",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "AMD"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000051143_10Q_20230425.json",
@@ -25,7 +28,10 @@
       "split": "public-dev",
       "cutoff": "2023-07-14",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "IBM"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000097745_10Q_20230505.json",
@@ -37,7 +43,10 @@
       "split": "public-dev",
       "cutoff": "2023-07-14",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "TMO"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000318154_10Q_20230428.json",
@@ -49,7 +58,10 @@
       "split": "public-dev",
       "cutoff": "2023-07-14",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "AMGN"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000773840_10Q_20230427.json",
@@ -61,7 +73,10 @@
       "split": "public-dev",
       "cutoff": "2023-07-14",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "HON"
+      ]
     },
     {
       "path": "corpus/EDGAR_0001751788_10Q_20230426.json",
@@ -73,7 +88,10 @@
       "split": "public-dev",
       "cutoff": "2023-07-14",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "DOW"
+      ]
     }
   ]
 }

@@ -7,8 +7,8 @@
       "path": "card.toml",
       "role": "input",
       "license": "Public domain (US government works: BLS CPI, EIA gasoline prices), accessed via ALFRED/FRED (Federal Reserve Bank of St. Louis); BLS release text public domain",
-      "sha256": "6db918e367bb8ce71b206232d1d0b3609f577ce9bbe199819810cc919928cd86",
-      "bytes": 4118,
+      "sha256": "66a9554d6c8196ee8d8fef34b349f7af4612781bae057cb40353662692fa24d0",
+      "bytes": 4388,
       "split": "public-dev",
       "redistributable": true
     },
@@ -31,7 +31,8 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "ALFRED"
+      "source": "ALFRED",
+      "shared": true
     },
     {
       "path": "corpus/BLS_CPI_RELEASE_20241010.json",
@@ -43,7 +44,8 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "BLS"
+      "source": "BLS",
+      "shared": true
     },
     {
       "path": "corpus/EIA_GASREGW_20241028.json",
@@ -55,14 +57,15 @@
       "redistributable": true,
       "cutoff": "2024-10-31",
       "pii_stripped": true,
-      "source": "FRED"
+      "source": "FRED",
+      "shared": true
     },
     {
       "path": "corpus/manifest.json",
       "role": "input",
       "license": "Public domain (US government works: BLS CPI, EIA gasoline prices), accessed via ALFRED/FRED (Federal Reserve Bank of St. Louis); BLS release text public domain",
-      "sha256": "a59b73f8e539a61791094acfbe6856c5416da244e9fb61ca9a49f636f1f67048",
-      "bytes": 1696,
+      "sha256": "68ae58bd184d6cb45dd68c732373dd4455eefce4f8b5913958016a11854f676c",
+      "bytes": 1762,
       "split": "public-dev",
       "redistributable": true
     }

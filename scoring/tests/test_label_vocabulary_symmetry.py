@@ -1,12 +1,12 @@
-"""The two roster paths agree about what a label vocabulary is (#20, follow-on to #18).
+"""The two roster paths agree about what a label vocabulary is.
 
 `EntityRoster.labels` is built from two sources: `EntityRoster.from_task` reads `task.json` on the
 local path, and `plan_adapter.labels_from_entry` reads the signed C1 entry on the platform path.
-#18 made the plan path strict -- two or more unique, non-empty, unpadded strings, classification
+An earlier change made the plan path strict -- two or more unique, non-empty, unpadded strings, classification
 only -- and left the local path as it was: no count, no uniqueness, no whitespace, no target type,
 and a fall-through to `labels = None` that SKIPS the label check when the shape is wrong.
 
-That is the same defect #18 closed, pointed the other way. `task.json` is organizer material too,
+That is the same defect the plan path closed, pointed the other way. `task.json` is organizer material too,
 so a malformed vocabulary there is an organizer fault, not a check that quietly does not run.
 
 These tests hand the SAME vocabulary to BOTH paths and assert they reach the same verdict. That is
@@ -28,7 +28,7 @@ from qfbench2_track_analysis.plan_adapter import labels_from_entry
 
 FIXTURE = "c1/analysis_final.expanded.json"
 
-#: Every shape #18 refuses on the plan side. Each row is a control: before this change the local
+#: Every shape the plan path refuses. Each row is a control: before this change the local
 #: path accepted the first four and silently skipped the check on the last four.
 MALFORMED: tuple[object, ...] = (
     ["up"],

@@ -9,7 +9,12 @@
       "positive_reaction",
       "negative_reaction",
       "flat"
-    ]
+    ],
+    "label_assertions": {
+      "positive_reaction": "will have a one-day abnormal return greater than 1% after its 2024-02-01 earnings release",
+      "negative_reaction": "will have a one-day abnormal return less than -1% after its 2024-02-01 earnings release",
+      "flat": "will have a one-day abnormal return between -1% and 1% after its 2024-02-01 earnings release"
+    }
   },
   "prompt": "Using ONLY the frozen evidence corpus (each company's most recent SEC filings available on or before the 2024-01-31 cutoff), predict for each company in the table the market-adjusted stock reaction to its 2024-02-01 after-close quarterly earnings release. The reaction is the one-day ABNORMAL return = (company total return from the 2024-02-01 close to the 2024-02-02 close) minus the SPY return over the same window. Label 'positive_reaction' if the abnormal return is greater than +1%, 'negative_reaction' if less than -1%, otherwise 'flat'. Report a 90% interval on the abnormal return (%) for each company, and support every prediction with citations to passages in the frozen corpus.",
   "cutoff_date": "2024-01-31",

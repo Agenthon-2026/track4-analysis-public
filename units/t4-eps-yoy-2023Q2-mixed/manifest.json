@@ -7,8 +7,8 @@
       "path": "card.toml",
       "role": "input",
       "license": "CC-BY-4.0",
-      "sha256": "b236affe5a823f389c9f81f153cf4703caf99865990eb6cc60e8f143d012c8a0",
-      "bytes": 3787,
+      "sha256": "159c436867c106bc416f66c71edf58a48b41d893f6537f6d4e1f32ee1f0a3264",
+      "bytes": 4057,
       "split": "public-dev",
       "redistributable": true
     },
@@ -16,8 +16,8 @@
       "path": "task.json",
       "role": "input",
       "license": "CC-BY-4.0",
-      "sha256": "b5716d262da1081d92c6e200adf98177973bde029f01cb446ea0e83f111bf83c",
-      "bytes": 4591,
+      "sha256": "a51ce4f00ccb5a4a34eea501a9618968e09c5d8bde1ab88607b38d09afd07785",
+      "bytes": 4894,
       "split": "public-dev",
       "redistributable": true
     },
@@ -31,7 +31,10 @@
       "redistributable": true,
       "cutoff": "2023-07-14",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "AMD"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000051143_10Q_20230425.json",
@@ -43,7 +46,10 @@
       "redistributable": true,
       "cutoff": "2023-07-14",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "IBM"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000097745_10Q_20230505.json",
@@ -55,7 +61,10 @@
       "redistributable": true,
       "cutoff": "2023-07-14",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "TMO"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000318154_10Q_20230428.json",
@@ -67,7 +76,10 @@
       "redistributable": true,
       "cutoff": "2023-07-14",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "AMGN"
+      ]
     },
     {
       "path": "corpus/EDGAR_0000773840_10Q_20230427.json",
@@ -79,7 +91,10 @@
       "redistributable": true,
       "cutoff": "2023-07-14",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "HON"
+      ]
     },
     {
       "path": "corpus/EDGAR_0001751788_10Q_20230426.json",
@@ -91,14 +106,17 @@
       "redistributable": true,
       "cutoff": "2023-07-14",
       "pii_stripped": true,
-      "source": "EDGAR"
+      "source": "EDGAR",
+      "entity_ids": [
+        "DOW"
+      ]
     },
     {
       "path": "corpus/manifest.json",
       "role": "input",
       "license": "CC-BY-4.0",
-      "sha256": "58de5d2f33869dad8efaea529d336a0912aa629e4d47130fc70aeb56fa165098",
-      "bytes": 3147,
+      "sha256": "d02e51af18fac7d448a7406e688f0f5589eb47c4428711fef327b307a5aa9181",
+      "bytes": 3418,
       "split": "public-dev",
       "redistributable": true
     }

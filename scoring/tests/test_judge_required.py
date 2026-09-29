@@ -1,4 +1,4 @@
-"""T4-1: a rankable factory constructs a production judge, or there is no score.
+"""A rankable factory constructs a production judge, or there is no score.
 
 The pre-fix behaviour, measured: under the driver's three-key context the official factory built no
 judge, ``ctx.get("judge")`` was ``None``, the faithfulness block was skipped entirely, and
@@ -214,11 +214,24 @@ def test_the_production_path_always_applies_the_faithfulness_gate(
     """The inverse: nothing outside `build_smoke_verifier` may set the non-gating flag."""
     ctx = _ctx(tmp_path)
     _, provenance = judge_factory.build_smoke_judge()
-    outcome = score_unit(
-        ctx, judge=StubJudge(("nothing entails this",)), judge_provenance=provenance
-    )
-    assert outcome.state == "participant_failure"
-    assert outcome.diagnostics["reason"] == "t4.evidence_unsupported"
+    judge = StubJudge(("nothing entails this",))
+    # A judge that contradicts every passage it reads: applied, the penalty zeroes the unit.
+    judge.contradicted_premises = {premise for premise in _all_corpus_texts(ctx)}
+    outcome = score_unit(ctx, judge=judge, judge_provenance=provenance)
+    assert outcome.state == "participant_success"
+    assert outcome.diagnostics["faithfulness_factor"] == 0.0
+    assert outcome.score == 0.0
+
+
+def _all_corpus_texts(ctx: dict[str, Any]) -> list[str]:
+    import json as _json
+    import pathlib as _pathlib
+
+    corpus = _pathlib.Path(ctx["unit_dir"]) / "corpus"
+    return [
+        _json.loads(path.read_text(encoding="utf-8"))["text"]
+        for path in sorted(corpus.glob("*.json"))
+    ]
 
 
 def test_the_shared_runner_resolves_the_smoke_factory_by_profile() -> None:

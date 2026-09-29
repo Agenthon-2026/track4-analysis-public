@@ -65,6 +65,16 @@ class T4Reason(StrEnum):
     CITATION_UNRESOLVED = "t4.citation_unresolved"
     CITATION_UNDATED = "t4.citation_undated"
     CITATION_POST_CUTOFF = "t4.citation_post_cutoff"
+    #: The cited document is not about the entity whose prediction cites it. An NLI model reads
+    #: a claim about company A against company B's filing as entailed whenever the wording
+    #: matches, so entity correspondence is checked deterministically at the DOCUMENT level,
+    #: before the judge.
+    CITATION_WRONG_ENTITY = "t4.citation_wrong_entity"
+    #: Too many claims state figures that appear nowhere in the passage they cite. Exact code
+    #: checks the numbers before the judge, because an NLI model reads "$5.9 billion" against
+    #: "$5.2 billion" as consistent. Refused only when these claims alone put the supported
+    #: fraction under the threshold; see `numeric.py`.
+    CLAIM_NUMBER_NOT_IN_SPAN = "t4.claim_number_not_in_span"
     EVIDENCE_UNSUPPORTED = "t4.evidence_unsupported"
 
 
@@ -86,6 +96,8 @@ _LABEL_FOR: dict[T4Reason, FailureLabel] = {
     T4Reason.CITATION_UNRESOLVED: FailureLabel.T4_UNFAITHFUL_CITATION,
     T4Reason.CITATION_UNDATED: FailureLabel.T4_STALE_EVIDENCE,
     T4Reason.CITATION_POST_CUTOFF: FailureLabel.T4_STALE_EVIDENCE,
+    T4Reason.CITATION_WRONG_ENTITY: FailureLabel.T4_UNFAITHFUL_CITATION,
+    T4Reason.CLAIM_NUMBER_NOT_IN_SPAN: FailureLabel.T4_UNFAITHFUL_CITATION,
     T4Reason.EVIDENCE_UNSUPPORTED: FailureLabel.T4_UNFAITHFUL_CITATION,
 }
 

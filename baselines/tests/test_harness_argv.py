@@ -117,7 +117,7 @@ def test_question_json_stays_removed() -> None:
 
     `question.json` was a redirect stub kept for backward compatibility with tools that never
     shipped. It is gone from every unit and from `templates/`. The previous version of this guard
-    skipped itself when the file was absent, which is the decoration this repo's R3 rule exists to
+    skipped itself when the file was absent, which is the decoration this repo's fail-closed rule exists to
     forbid: the guard would have gone quietly green on the very change it was written to notice.
     Restoring the file has to be a deliberate act that turns this red, not a silent one.
     """

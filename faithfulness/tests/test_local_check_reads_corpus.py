@@ -1,23 +1,23 @@
 """The local pre-check must ask the judge the question the REAL gate asks.
 
-Finding H1 of the prose-drift sweep of 2026-08-27, rewritten against post-#28 `main`.
+A pre-check that says PASS where the gate says FAIL (or the reverse) is worse than no pre-check,
+so what these tests pin is agreement rather than any particular number: every one of them asserts
+the local number *equals* what the scorer produces for the same answer and the same judge, and
+that the premise is always corpus text.
 
-Two generations of defect are pinned here, because the fix for the first one was written against
-behaviour #28 had already deleted:
+A local check can drift from the gate in two ways, and both are covered here.
 
-*Generation 1.* ``python faithfulness/judge.py --answer …`` resolved the premise as
-``claim.get("_resolved_span", "") or claim_text``, and nothing ever set ``_resolved_span``, so
-every claim was scored against itself.
+*The wrong PREMISE.* If the premise is resolved from the claim itself rather than from
+``corpus/<doc_id>.json``, every claim is scored against itself and the check passes everything --
+a green pre-check that means nothing. So the tests below assert the premise is the cited span,
+read out of the corpus document.
 
-*Generation 2.* The premise was then resolved from ``corpus/<doc_id>.json`` — but the **hypothesis**
-stayed ``claim["text"]``, the string the participant wrote. #28 deleted exactly that rule from the
-scorer: the hypothesis is now the canonical sentence derived from the submitted prediction
-(:func:`qfbench2_track_analysis.hypothesis.canonical_hypothesis`). Measured on the synthetic unit
-below, an answer with ``label="miss"``, ``point_forecast=-99.0`` and interval ``[-100, -98]`` whose
-prose accurately described a real corpus passage scored **faithfulness 1.0 / gate_pass True**
-against the old local check and **0.0** against the real gate. A pre-check that says PASS where the
-gate says FAIL is worse than no pre-check at all, so every test here asserts the local number
-*equals* what the scorer produces for the same answer and the same judge.
+*The wrong HYPOTHESIS.* The gate's hypothesis is the participant's claim, with the document-level
+entity check and the numeric backstop in front of it. A pre-check that asked instead whether the
+passage entails the submitted forecast would be answering a different question -- and one the
+corpus cannot answer, since a pre-cutoff passage does not state a post-cutoff outcome. So the
+tests assert that an accurate claim about a cited passage passes, whatever the forecast beside it
+says.
 
 The judges come from ``scoring/tests/synthetic.py`` and need no model weights.
 """
@@ -54,19 +54,19 @@ ROSTER = ("SYN-A",)
 #: hypothesis, so a judge that genuinely entails the passage scored the submission 1.0 no matter
 #: what the submission predicted.
 ACCURATE_PROSE = (
-    "Synthetic Issuer A reported quarterly earnings above the published consensus."
+    # A paraphrase, not a verbatim quote: from 5.2.0 a word-for-word quote of the
+    # cited passage is not put to the judge at all, and these tests need the judge's question.
+    "Synthetic Issuer A's quarterly earnings came in above the published consensus."
 )
 
 
 def _judge() -> HypothesisAwareJudge:
-    """Entails the supporting passage only when the hypothesis describes that passage.
-
-    The canonical hypothesis never contains "above the published consensus" — it is built from
-    the submitted label, forecast and interval — so this judge separates "asked about the prose"
-    from "asked about the prediction" without a model.
-    """
+    """Entails the supporting passage only when the hypothesis describes that passage, and finds
+    it contradicted by a hypothesis that says the opposite (5.2.0)."""
     return HypothesisAwareJudge(
-        SUPPORTING_TEXT, required_in_hypothesis="above the published consensus"
+        SUPPORTING_TEXT,
+        required_in_hypothesis="above the published consensus",
+        contradicting_in_hypothesis="below the published consensus",
     )
 
 
@@ -83,11 +83,13 @@ def _wrong_prediction_with_accurate_prose() -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------------------------
-# 1. The hypothesis is the PREDICTION, not the participant's prose.
+# 1. The hypothesis is the CLAIM; the premise is the cited span.
 # --------------------------------------------------------------------------------------------
-def test_accurate_prose_does_not_rescue_a_wrong_prediction(
+def test_accurate_prose_is_admitted_whatever_the_prediction(
     tmp_path: pathlib.Path,
 ) -> None:
+    """An accurate claim about a cited passage passes the gate. Whether the passage
+    supports the forecast is reasoning grading's question, not this gate's."""
     unit = build_unit(tmp_path, entities=ROSTER)
     judge = _judge()
 
@@ -95,26 +97,26 @@ def test_accurate_prose_does_not_rescue_a_wrong_prediction(
         _wrong_prediction_with_accurate_prose(), build_unit_context(unit), judge
     )
 
-    assert result.faithfulness == 0.0
-    assert result.gate_pass is False
-    # The question actually asked. This is the assertion the old check could not make: it asked
-    # about `ACCURATE_PROSE`, which is why it answered 1.0.
-    asked = [hypothesis for _, hypothesis in judge.calls]
-    assert ACCURATE_PROSE not in asked
-    assert all("is miss." in h and "-100 to -98" in h for h in asked)
-
-
-def test_a_supported_prediction_still_passes(tmp_path: pathlib.Path) -> None:
-    """Positive control: the gate is not simply refusing everything."""
-    unit = build_unit(tmp_path, entities=ROSTER)
-    judge = HypothesisAwareJudge(SUPPORTING_TEXT, required_in_hypothesis="is beat")
-
-    result = check_answer(
-        answer_for(entities=ROSTER, label="beat"), build_unit_context(unit), judge
-    )
-
     assert result.faithfulness == 1.0
-    assert result.gate_pass is True
+    assert result.penalty_factor == 1.0
+    assert result.false_count == 0
+    assert [(p, h) for p, h in judge.calls] == [(SUPPORTING_TEXT, ACCURATE_PROSE)]
+    assert result.claims[0].claim == ACCURATE_PROSE
+
+
+def test_an_inaccurate_claim_fails(tmp_path: pathlib.Path) -> None:
+    """Negative control: the check is not simply passing everything."""
+    unit = build_unit(tmp_path, entities=ROSTER)
+    answer = answer_for(
+        entities=ROSTER,
+        label="beat",
+        claim_text="Synthetic Issuer A reported quarterly earnings below the published consensus.",
+    )
+    result = check_answer(answer, build_unit_context(unit), _judge())
+
+    assert result.faithfulness == 0.0
+    assert result.penalty_factor == 0.0
+    assert result.claims[0].reasons == ("contradicted",)
 
 
 def _score_with(
@@ -136,58 +138,58 @@ def test_local_number_equals_the_scorer_on_a_passing_answer(
 ) -> None:
     """The anti-drift test: the pre-check and `score_unit` must agree, or the pre-check lies."""
     unit = build_unit(tmp_path, entities=ROSTER, with_outcome=True)
-    answer = answer_for(entities=ROSTER, label="beat")
-
-    local = check_answer(
-        answer,
-        build_unit_context(unit),
-        HypothesisAwareJudge(SUPPORTING_TEXT, required_in_hypothesis="is beat"),
-    )
-    outcome = _score_with(
-        unit,
-        answer,
-        HypothesisAwareJudge(SUPPORTING_TEXT, required_in_hypothesis="is beat"),
-        tmp_path,
-    )
-
-    assert outcome.state == "participant_success"
-    assert local.gate_pass is True
-    assert local.faithfulness == outcome.diagnostics["faithfulness"] == 1.0
-
-
-def test_local_verdict_equals_the_scorer_on_the_prose_exploit(
-    tmp_path: pathlib.Path,
-) -> None:
-    """The same submission must fail in both places, and for the same recorded reason."""
-    unit = build_unit(tmp_path, entities=ROSTER, with_outcome=True)
     answer = _wrong_prediction_with_accurate_prose()
 
     local = check_answer(answer, build_unit_context(unit), _judge())
     outcome = _score_with(unit, answer, _judge(), tmp_path)
 
-    assert local.gate_pass is False
-    assert local.faithfulness == 0.0
-    assert outcome.state == "participant_failure"
-    assert outcome.diagnostics["reason"] == T4Reason.EVIDENCE_UNSUPPORTED.value
+    assert outcome.state == "participant_success"
+    assert local.penalty_factor == outcome.diagnostics["faithfulness_factor"] == 1.0
+    assert local.faithfulness == outcome.diagnostics["faithfulness"] == 1.0
+    # The scorer additionally records the prediction-relevance diagnostic; here the passage
+    # says nothing about a `miss`, so it reads 0.0 -- and nothing was refused because of it.
+    assert outcome.diagnostics["prediction_relevance"] == 0.0
 
 
-# --------------------------------------------------------------------------------------------
-# 2. The denominator is the trusted roster, not the number of claims written.
-# --------------------------------------------------------------------------------------------
-def test_padding_claims_cannot_move_the_local_denominator(
+def test_local_verdict_equals_the_scorer_on_a_failing_answer(
     tmp_path: pathlib.Path,
 ) -> None:
-    """Seven copies of one claim on a one-entity roster: the old check reported 7, the gate 1."""
-    unit = build_unit(tmp_path, entities=ROSTER)
+    """The same submission must be penalised in both places, by the same factor (5.2.0: a
+    contradicted claim costs its share of the unit; nothing is refused)."""
+    unit = build_unit(tmp_path, entities=ROSTER, with_outcome=True)
+    answer = answer_for(
+        entities=ROSTER,
+        claim_text="Synthetic Issuer A reported quarterly earnings below the published consensus.",
+    )
+
+    local = check_answer(answer, build_unit_context(unit), _judge())
+    outcome = _score_with(unit, answer, _judge(), tmp_path)
+
+    assert local.faithfulness == outcome.diagnostics["faithfulness"] == 0.0
+    assert local.penalty_factor == outcome.diagnostics["faithfulness_factor"] == 0.0
+    assert outcome.state == "participant_success"
+    assert outcome.score == 0.0
+
+
+# --------------------------------------------------------------------------------------------
+# 2. The denominator is the claim count, locally and in the scorer alike.
+# --------------------------------------------------------------------------------------------
+def test_the_local_denominator_is_the_claim_count_as_in_the_scorer(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Seven copies of one accurate claim: seven rows, faithfulness 1.0 in both places."""
+    unit = build_unit(tmp_path, entities=ROSTER, with_outcome=True)
     answer = _wrong_prediction_with_accurate_prose()
     one = answer["entity_predictions"][0]["claims"][0]
     answer["entity_predictions"][0]["claims"] = [dict(one) for _ in range(7)]
 
     result = check_answer(answer, build_unit_context(unit), _judge())
+    outcome = _score_with(unit, answer, _judge(), tmp_path)
 
     assert result.roster_count == 1
-    assert len(result.predictions) == 1
-    assert result.faithfulness == 0.0
+    assert result.claim_count == len(result.claims) == 7
+    assert result.faithfulness == outcome.diagnostics["faithfulness"] == 1.0
+    assert outcome.diagnostics["claim_count"] == 7
 
 
 # --------------------------------------------------------------------------------------------
@@ -256,16 +258,16 @@ def test_resolved_span_is_not_an_escape_hatch(tmp_path: pathlib.Path) -> None:
     The field is not in `analysis.schema.json`, nothing in this repo or the toolkit sets it, and
     the override let a submission supply BOTH halves of the entailment pair. Measured against the
     branch that has been deleted: a claim whose `_resolved_span` equalled its own text scored
-    faithfulness 1.0 / gate_pass True. It must now be inert — the premise comes from the trusted
+    faithfulness 1.0 / gate_pass True (5.1.x). It must now be inert — the premise comes from the trusted
     corpus and from nowhere else.
     """
     unit = build_unit(tmp_path, entities=ROSTER)
     answer = _wrong_prediction_with_accurate_prose()
     claim = answer["entity_predictions"][0]["claims"][0]
-    # Span deliberately wider than the corpus document: Python slicing clamps it, so the
-    # premise is the whole cited document either way — and, under the deleted override, the
-    # whole participant-supplied string.
-    claim["span_end"] = 400
+    # The whole cited document (from 5.1.1 an end past the document names no passage at all,
+    # where slicing used to clamp it) -- and, under the deleted override, the whole
+    # participant-supplied string.
+    claim["span_start"], claim["span_end"] = 0, len(SUPPORTING_TEXT)
     claim["_resolved_span"] = (
         "The eps outcome of Synthetic Issuer A (SYN-A) is miss. The 90% prediction interval "
         "for the eps outcome of Synthetic Issuer A (SYN-A) is -100 to -98."
@@ -274,9 +276,10 @@ def test_resolved_span_is_not_an_escape_hatch(tmp_path: pathlib.Path) -> None:
     judge = _SelfEntailingJudge()
     result = check_answer(answer, build_unit_context(unit), judge)
 
-    assert result.faithfulness == 0.0
-    assert result.gate_pass is False
+    # The judge contradicts nothing; the point of the test is which premise it was handed.
+    assert result.faithfulness == 1.0
     # The premise offered to the judge is always corpus text, never the participant's string.
+    assert [premise for premise, _ in judge.calls] == [SUPPORTING_TEXT]
     assert claim["_resolved_span"] not in [premise for premise, _ in judge.calls]
 
 
@@ -290,6 +293,10 @@ class _SelfEntailingJudge:
     def entail(self, premise: str, hypothesis: str) -> float:
         self.calls.append((premise, hypothesis))
         return 1.0 if hypothesis and hypothesis in premise else 0.0
+
+    def contradiction(self, premise: str, hypothesis: str) -> float:
+        self.calls.append((premise, hypothesis))
+        return 0.0
 
 
 # --------------------------------------------------------------------------------------------
@@ -368,12 +375,16 @@ def test_cli_runs_as_a_script_from_the_repo_root(tmp_path: pathlib.Path) -> None
     assert "ModuleNotFoundError" not in combined, combined
     # The banner is printed from the HYDRATED unit, so seeing it proves the repo's own
     # qfbench2_track_analysis package imported and CorpusIndex.from_unit ran.
-    assert "Scoring 1 prediction(s)" in combined, combined
-    assert "the trusted roster: 1" in combined, combined
-    # Whether the judge is installed decides what happens next; either way the run must not
-    # end in a green exit without a verdict.
-    assert proc.returncode != 0
-    assert "GATE:" in combined
+    assert "Scoring 1 claim(s) for 1 roster entit(y/ies)" in combined, combined
+    # Whether the judge is installed decides what happens next; either way the run must end
+    # with a verdict, and the exit status must agree with it: green only on GATE: PASS. (With
+    # the real judge installed the synthetic claim IS entailed by its passage, so the run
+    # legitimately exits 0; without one the judge-unavailable path exits 1.)
+    assert "GATE:" in combined, combined
+    assert (proc.returncode == 0) == ("GATE: PASS" in combined), (
+        proc.returncode,
+        combined,
+    )
 
 
 def test_transformers_without_torch_degrades_instead_of_crashing(
@@ -433,3 +444,29 @@ def test_transformers_without_torch_degrades_instead_of_crashing(
     assert "NameError" not in combined, combined
     assert "GATE:" in combined, combined
     assert proc.returncode != 0
+
+
+def test_local_factor_equals_the_scorer_under_padding(tmp_path: pathlib.Path) -> None:
+    """The soft floor needs the roster's entity count: with two entities at most 3 x 2 = 6
+    non-false claims dilute a false one, so one contradicted claim among twelve costs 1/7 of the
+    unit (the old plain share would be 1/12) -- locally and in the scorer alike."""
+    roster = ("SYN-A", "SYN-B")
+    unit = build_unit(tmp_path, entities=roster, with_outcome=True)
+    answer = answer_for(entities=roster, claim_text=ACCURATE_PROSE)
+    base = answer["entity_predictions"][0]["claims"][0]
+    answer["entity_predictions"][0]["claims"] = [
+        {
+            **base,
+            "claim": "Synthetic Issuer A reported quarterly earnings below the published consensus.",
+        }
+    ] + [{**base, "claim": ACCURATE_PROSE} for _ in range(10)]
+
+    local = check_answer(answer, build_unit_context(unit), _judge())
+    outcome = _score_with(unit, answer, _judge(), tmp_path)
+
+    assert (
+        outcome.diagnostics["false_claim_count"] == 1
+        and outcome.diagnostics["claim_count"] == 12
+    )
+    assert local.penalty_factor == outcome.diagnostics["faithfulness_factor"]
+    assert local.penalty_factor == pytest.approx(1 - 1 / 7)

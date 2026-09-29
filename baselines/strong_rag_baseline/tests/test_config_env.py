@@ -1,5 +1,4 @@
-"""The reference agent must read the env var the harness actually sets (finding H6,
-prose-drift sweep 2026-08-27).
+"""The reference agent must read the env var the harness actually sets.
 
 SUBMISSION_CLI.md's container-environment contract injects ``MODEL_NAME`` — the pinned
 house-model id served at ``MODEL_ENDPOINT``. Before the fix, config.py read only

@@ -13,7 +13,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "CORN_CBT"
+      ]
     },
     {
       "path": "corpus/COT_ES_SP500_20241025.json",
@@ -25,7 +28,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "ES_SP500"
+      ]
     },
     {
       "path": "corpus/COT_EURO_FX_20241025.json",
@@ -37,7 +43,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "EURO_FX"
+      ]
     },
     {
       "path": "corpus/COT_GOLD_CMX_20241025.json",
@@ -49,7 +58,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "GOLD_CMX"
+      ]
     },
     {
       "path": "corpus/COT_JPY_CME_20241025.json",
@@ -61,7 +73,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "JPY_CME"
+      ]
     },
     {
       "path": "corpus/COT_METHODOLOGY_20241025.json",
@@ -73,7 +88,8 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "shared": true
     },
     {
       "path": "corpus/COT_NATGAS_NYMEX_20241025.json",
@@ -85,7 +101,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "NATGAS_NYMEX"
+      ]
     },
     {
       "path": "corpus/COT_SILVER_CMX_20241025.json",
@@ -97,7 +116,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "SILVER_CMX"
+      ]
     },
     {
       "path": "corpus/COT_UST_10Y_20241025.json",
@@ -109,7 +131,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "UST_10Y"
+      ]
     },
     {
       "path": "corpus/COT_UST_2Y_20241025.json",
@@ -121,7 +146,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "UST_2Y"
+      ]
     },
     {
       "path": "corpus/COT_WTI_NYMEX_20241025.json",
@@ -133,7 +161,10 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "entity_ids": [
+        "WTI_NYMEX"
+      ]
     },
     {
       "path": "corpus/MKT_SNAPSHOT_20241031.json",
@@ -145,7 +176,8 @@
       "split": "public-dev",
       "cutoff": "2024-10-31",
       "redistributable": true,
-      "pii_stripped": true
+      "pii_stripped": true,
+      "shared": true
     }
   ]
 }

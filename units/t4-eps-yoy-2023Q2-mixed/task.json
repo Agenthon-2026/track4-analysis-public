@@ -8,7 +8,11 @@
     "labels": [
       "up",
       "down"
-    ]
+    ],
+    "label_assertions": {
+      "up": "will report higher GAAP diluted earnings per share for the June-2023 quarter than for the same quarter one year earlier",
+      "down": "will report lower GAAP diluted earnings per share for the June-2023 quarter than for the same quarter one year earlier"
+    }
   },
   "prompt": "Using ONLY the frozen evidence corpus (each company's SEC filings available on or before the 2023-07-14 cutoff), predict for each company whether its GAAP diluted EPS for the June-2023 quarter - reported AFTER the cutoff - will be HIGHER ('up') or LOWER ('down') than its GAAP diluted EPS for the same quarter one year earlier (given as prior_year_q_eps). Also give a point forecast of the June-2023-quarter diluted EPS and a 90% interval. Support every prediction with citations to passages in the frozen corpus (each firm's most recent 10-Q). Do NOT rely on the post-cutoff earnings release; it is absent by design.",
   "cutoff_date": "2023-07-14",

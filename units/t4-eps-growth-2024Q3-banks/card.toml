@@ -1,8 +1,8 @@
 # QFBench 2.0 task-card v2 - Track 4 PUBLIC-DEV practice unit (family: eps_growth_regression)
-# Practice material, NOT scored. Retired from the private scored set because it is
+# Practice material, NOT scored. Retired from the scored set because it is
 # memorization-exposed: resolution_date 2024-10-24 is on or before the approximate
 # training cutoff of the models under evaluation.
-# No resolved outcome ships with this unit; it stays in the private repo, so this
+# No resolved outcome ships with this unit; the answer and evaluation data are held by the organizers, so this
 # unit is practice only and cannot be self-scored.
 # Corpus provenance: EDGAR.
 # Generated from the retired scored unit by the organizers' practice-set builder;
@@ -20,7 +20,7 @@ prompt          = "Using only the frozen pre-2024-10-10 SEC filings in the corpu
 cutoff_date     = "2024-10-10"
 resolution_date = "2024-10-24"
 adversarial     = false
-faithfulness_rubric = "Every claim must cite a passage from a corpus document whose doc_date <= 2024-10-10. A roster entity's prediction counts as supported when some cited span entails it above tau_citation = 0.5; the unit is admissible when at least faithfulness_threshold = 0.80 of the ROSTER's predictions are supported (the denominator is the roster, not the number of claims written). Claims must not assert figures from the Q3-2024 earnings releases (post-cutoff, absent by design). Failure codes: T4_UNFAITHFUL_CITATION, T4_STALE_EVIDENCE."
+faithfulness_rubric = "Every claim must cite a passage from a corpus document whose doc_date <= 2024-10-10. A claim is supported when a passage it cites entails the claim text above tau_citation = 0.5 (the judge is asked about your claim; a cited document must be one the manifest labels with the citing entity or marks shared, and a claim whose figures appear in none of its cited passages is unsupported before any model runs); the unit is admissible when at least faithfulness_threshold = 0.80 of the claims are supported (the denominator is the number of claims). Whether the evidence supports the forecast is not this gate's question. Claims must not assert figures from the Q3-2024 earnings releases (post-cutoff, absent by design). Failure codes: T4_UNFAITHFUL_CITATION, T4_STALE_EVIDENCE."
 
 [metadata]
 author_name              = "track4-cowork"
