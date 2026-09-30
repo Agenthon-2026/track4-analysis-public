@@ -7,8 +7,8 @@
       "path": "card.toml",
       "role": "input",
       "license": "Public domain (US government works: U.S. Commodity Futures Trading Commission, Commitments of Traders reports)",
-      "sha256": "b507faa58b27d3c0243bb46d67589dfc733ce78f8d1001f952a32cfee04ed096",
-      "bytes": 4538,
+      "sha256": "73ede468a3241bda309dfe018a2ce45eacfe10ee107a4c7b32ae9d0eb56bb1ec",
+      "bytes": 4602,
       "split": "public-dev",
       "redistributable": true
     },
@@ -16,8 +16,8 @@
       "path": "task.json",
       "role": "input",
       "license": "Public domain (US government works: U.S. Commodity Futures Trading Commission, Commitments of Traders reports)",
-      "sha256": "9946b3514e356f14fda845a8ee38a5a77adf93e378418752b97ba4172c91a13d",
-      "bytes": 6693,
+      "sha256": "57fcc6ba6b774ce15353138705da1b62cc2caed224b1a68cf0c2dd0e7b75b935",
+      "bytes": 6701,
       "split": "public-dev",
       "redistributable": true
     },

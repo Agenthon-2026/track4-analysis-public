@@ -7,8 +7,8 @@
       "path": "card.toml",
       "role": "input",
       "license": "Public domain (US government works: BLS CPI, EIA gasoline prices), accessed via ALFRED/FRED (Federal Reserve Bank of St. Louis); BLS release text public domain",
-      "sha256": "66a9554d6c8196ee8d8fef34b349f7af4612781bae057cb40353662692fa24d0",
-      "bytes": 4388,
+      "sha256": "7faed8cfcfe45eb5f6dd8af143bbddfdd78d173b7cf141d4898bb1dec051936b",
+      "bytes": 4452,
       "split": "public-dev",
       "redistributable": true
     },
@@ -16,8 +16,8 @@
       "path": "task.json",
       "role": "input",
       "license": "Public domain (US government works: BLS CPI, EIA gasoline prices), accessed via ALFRED/FRED (Federal Reserve Bank of St. Louis); BLS release text public domain",
-      "sha256": "d56db7bae48be37149f1e627852f0856369c90131c468b7b50ef5fa0a3bb0067",
-      "bytes": 6105,
+      "sha256": "0e63337df8e6d8190d8847458803a475f23e21da2109cd7c6279fddb409eb193",
+      "bytes": 6113,
       "split": "public-dev",
       "redistributable": true
     },

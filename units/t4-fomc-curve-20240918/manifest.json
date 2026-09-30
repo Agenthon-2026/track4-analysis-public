@@ -7,8 +7,8 @@
       "path": "card.toml",
       "role": "input",
       "license": "CC-BY-4.0",
-      "sha256": "b993e576200d4725402724bf49ae5eeeb5c20a4da41891f2cfe392de8e3fb377",
-      "bytes": 4397,
+      "sha256": "121fbacb91cbe6e77c892da47b1f96ba7b069f456aa852d751c3661c93a9aa14",
+      "bytes": 4461,
       "split": "public-dev",
       "redistributable": true
     },
@@ -16,8 +16,8 @@
       "path": "task.json",
       "role": "input",
       "license": "CC-BY-4.0",
-      "sha256": "802a3039ad05a327d367fc4a42d351818cb3a3b40abf693519590900aab77fdf",
-      "bytes": 4231,
+      "sha256": "440db200c702d7ded6dcee9c6d80e4e6357293f796b3cd96c98a4643a8e64a56",
+      "bytes": 4239,
       "split": "public-dev",
       "redistributable": true
     },

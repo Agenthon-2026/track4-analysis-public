@@ -301,6 +301,30 @@ def _compact_bytes(items: list) -> int:
     return len(text.encode("utf-8")) - 2  # the list's own brackets
 
 
+#: A URI as the grader masks it: a scheme, "://", and everything up to whitespace or closing
+#: punctuation.
+_URI = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://[^\s,;()\[\]{}<>\"']*")
+#: The grader's premise filler: one "#" per masked character.
+PREMISE_URI_FILLER = "#"
+#: A premise is a quote only with at least this many words once its URLs are masked.
+MIN_PREMISE_QUOTE_WORDS = 3
+
+
+def _mask_premise_uris(text: str) -> str:
+    return _URI.sub(lambda m: PREMISE_URI_FILLER * (m.end() - m.start()), text)
+
+
+def premise_is_corpus_quote(premise: str, masked_corpus_texts: list[str]) -> bool:
+    """The grader's rule for a premise that is exempt from the deny list: with every URL masked
+    by "#" (one per character), it has at least `MIN_PREMISE_QUOTE_WORDS` words (the filler and
+    bare punctuation count as no word) and is a substring of one corpus document masked the same
+    way. A bare URL, a bare deny-list token ("units/", "canary", "/home/") or a two-word quote is
+    not a quote, and a premise that adds a word of your own is not either."""
+    quote = _mask_premise_uris(premise.strip())
+    words = [w for w in quote.replace(PREMISE_URI_FILLER, " ").split() if any(c.isalnum() for c in w)]
+    return len(words) >= MIN_PREMISE_QUOTE_WORDS and any(quote in text for text in masked_corpus_texts)
+
+
 def check_submitted_reasons(
     answer: dict, corpus: dict[str, CorpusDoc], cutoff_date: str
 ) -> list[RailFinding]:
@@ -326,9 +350,10 @@ def check_submitted_reasons(
       their doc id and offsets > 46,500) -- the unit's reasoning is not judged and scores 0.
       Nothing is clipped. The three sum to the grader's 56,000-byte limit.
     - ``deny_list`` -- a deny-list phrase in ``mechanism`` or ``answer_implication``, or in a
-      ``premise`` that is not, as a whole (surrounding whitespace aside), a verbatim quote of
-      a corpus document. The grader refuses that unit's reasoning, which scores 0; the analysis
-      score is unaffected.
+      ``premise`` that is not a verbatim corpus quote (`premise_is_corpus_quote`: at least 3
+      words once URLs are masked, and, URLs masked on both sides, a substring of one corpus
+      document). The grader refuses that unit's reasoning, which scores 0; the analysis score is
+      unaffected.
 
     The byte backstop is computed as the compact-JSON UTF-8 size (``ensure_ascii=False``,
     ``separators=(",", ":")``, ``sort_keys=True``, minus two bytes per list for its
@@ -361,7 +386,7 @@ def check_submitted_reasons(
             "omit the field to submit none",
         )
 
-    quotable = [doc.text for doc in corpus.values()]
+    quotable = [_mask_premise_uris(doc.text) for doc in corpus.values()]
     projected_reasons: list[dict] = []
     trusted: list[dict] = []
     seen_content: dict[str, int] = {}
@@ -400,7 +425,7 @@ def check_submitted_reasons(
             value = projected.get(field)
             if not value:
                 continue
-            if field == "premise" and any(premise.strip() in text for text in quotable):
+            if field == "premise" and premise_is_corpus_quote(premise, quotable):
                 continue
             hits = [p for p in DENY_LIST if p in value.lower()]
             if hits:
@@ -672,6 +697,7 @@ def _claim_report(answer: dict, unit_dir: str | Path, counter: TokenCounter | No
         contradiction_bar=float(params.contradiction_bar),
         entity_admits=_entity_admits(corpus),
         entity_names=unit_entity_names(ctx["_task"]),
+        interval_level=params.interval_level,
     )
     return claims, [], ctx["_roster"].count
 

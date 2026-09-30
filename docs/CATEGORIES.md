@@ -114,7 +114,7 @@ the ordering against a metric where larger is better; `README.md` gives the meas
 
 ## Intervals: width costs, and so does a miss
 
-From scorer 5.1.0 the interval leg of the composite is an interval-score ratio against the unit's
+The interval leg of the composite is an interval-score ratio against the unit's
 declared naive interval (`reference/naive_answer.json`):
 
     interval_quality = naive_IS / (naive_IS + IS)

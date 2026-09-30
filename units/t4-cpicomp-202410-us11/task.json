@@ -135,5 +135,5 @@
       "corpus_ref": "corpus/"
     }
   ],
-  "notes": "Public-dev practice unit. This unit was retired from the Track 4 scored set because it is memorization-exposed (its outcome resolves on or before the approximate training cutoff of the models under evaluation), which is what makes it safe to publish. It is provided so you can exercise the unit format, the frozen-corpus discipline and the citation/faithfulness requirements end-to-end. No resolved outcome is shipped with it: public-dev units are not scored, and the answer key stays in the private repo. Author-facing design commentary has been removed from this field."
+  "notes": "Development practice unit. This unit was retired from the Track 4 held-out set because it is memorization-exposed (its outcome resolves on or before the approximate training cutoff of the models under evaluation), which is what makes it safe to publish. It is provided so you can exercise the unit format, the frozen-corpus discipline and the citation/faithfulness requirements end-to-end. No resolved outcome is shipped with it: the organizers hold the outcome and score this unit on the Development leaderboard. Author-facing design commentary has been removed from this field."
 }

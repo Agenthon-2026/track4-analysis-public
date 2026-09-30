@@ -231,14 +231,17 @@ def test_a_near_match_to_the_point_forecast_is_no_longer_exempt() -> None:
     assert status == "unanchored"
 
 
-def test_a_scale_step_of_the_point_forecast_is_no_longer_exempt() -> None:
+def test_a_scale_step_of_the_point_forecast_is_exempt_again_from_5_2_1() -> None:
+    """5.2.1 (rule "every"): an own value re-based by one of the span matcher's scale steps is
+    exempt ($5.9 billion for a point of 5900 in millions), exactly, with no rounding (the near
+    match above stays unanchored)."""
     status = _status(
         "Revenue was $5.9 billion",
         target_type="regression",
         interval_scored=True,
         point=5900.0,
     )
-    assert status == "unanchored"
+    assert status == "neutral"
 
 
 def test_the_rank_no_longer_exempts() -> None:

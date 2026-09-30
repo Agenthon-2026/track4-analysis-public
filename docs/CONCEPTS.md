@@ -165,7 +165,7 @@ A **citation** in Track 4 is a precise reference to a specific passage in a spec
 The scoring pipeline resolves the character offsets to extract the actual passage text, then
 checks whether that passage entails the claim. Offsets must name a real slice of the document
 (`0 <= span_start < span_end <=` the document's length); a citation whose offsets do not is not
-clamped, it names no passage and supports nothing (scorer 5.1.1). The judge reads at most its
+clamped, it names no passage and supports nothing. The judge reads at most its
 tokenizer window, 512 tokens for the passage and the claim together, and the passage is cut to
 that window before the numeric backstop and the judge read it: a figure past the window does not
 count. Cite the passage that carries your figures, not a whole document.
@@ -223,14 +223,24 @@ A claim is **false** when any one of these holds, checked in this order:
    - A number that is part of one of the **unit's own entity names or tickers** as `task.json`
      writes them ("Phillips 66", "S&P 500", "3M") is not a figure. Any other name is read as
      written: a number in it is a figure.
-   - A figure that **exactly** equals a scored value you submitted is exempt: your point
-     forecast on a regression or ranking unit, and your interval bounds only when the unit's
-     interval leg is scored. Your rank is never exempt, and no scale, percent-versus-ratio or
-     rounding tolerance applies to your own values. Nothing else is exempt; a value from the
-     task table must cite the task table (see "Citing the task table" below).
+   - A figure that equals a scored value you submitted is exempt: your point forecast on a
+     regression or ranking unit, and your interval bounds only when the unit's interval leg is
+     scored. The same scale steps as for passages apply ("$5.9bn" for 5.9 in billions, "12%"
+     for 0.12), but no rounding. A figure is not exempt when the direction you write
+     contradicts the value's sign: a minus sign, accounting parentheses or a fall word that
+     governs it ("yields declined 20 bps") make it negative, a plus sign or a rise word ("rose
+     10 bps") positive, so "declined 20 bps" is not an upper bound of 20. A half-width written
+     with "±" ("±10 bps") is exempt when it equals half the width of your scored interval, and
+     so is the unit's interval level written next to an interval word ("the 90% interval"). Your
+     rank is never exempt. Nothing else is exempt; a value from the task table must cite the
+     task table (see "Citing the task table" below).
    - For figures in a passage, separators, scale (`$8.5M`, `1,498,614` in a table headed "in
      thousands"), percent-versus-ratio, sign and rounding to the precision you wrote are all
      tolerated.
+   - Equivalent forms of a number are read as the same figure in claim and passage: a fraction
+     of a point ("1/4 percentage point", "quarter-point", "¼ point" are 0.25 and so 25 bps), a
+     number in words before a unit ("four basis points", "two percent"), and glued forms
+     ("7.3x", "$212mm", "25bp", "1.5pp").
    - A cited span longer than **8,000 characters** (the per-citation cap of the reasoning
      contract) anchors no figure. Cite the passage that states your figures, not a whole filing.
    - A claim that is **word for word** a piece of a span it cites (whitespace runs compared as
@@ -469,8 +479,8 @@ any metric runs: your entity set must equal the trusted roster exactly — compl
 extra. A missing, duplicated or unknown `entity_id` is a participant failure
 (`incomplete_output`), and the unit takes the worst value W rather than being scored on the rows
 you did answer. Measured on a four-entity ranking unit: the full roster correctly ordered, with
-intervals that cover, scores +0.8737; the same answer with one row omitted scores W = 0.0
-(scorer 5.1.0; 5.0.0 measured +0.67 and −0.27). On the leaderboard W shows as −0.27
+intervals that cover, scores +0.8737; the same answer with one row omitted scores W = 0.0.
+On the leaderboard W shows as −0.27
 (leaderboard = −0.27 + 1.27 × analysis).
 
 So "answer only the rows you are confident about" is not a strategy that scores badly — it is not
@@ -491,7 +501,7 @@ lo and hi."
 **Calibration** is the alignment between stated and empirical confidence. A perfectly calibrated
 agent's 90% intervals contain the true value exactly 90% of the time.
 
-**The interval leg (scorer 5.1.0).** Each row's interval is scored with the interval score (the
+**The interval leg.** Each row's interval is scored with the interval score (the
 Gneiting-Raftery interval score): its width plus `2/alpha` times the
 distance by which the truth falls outside it, `alpha = 1 - interval_level` (so 20x the miss at
 90%). The unit value is the mean over the roster, and it is compared with the same quantity for the
@@ -502,15 +512,21 @@ unit's declared naive interval (`reference/naive_answer.json`):
 
 `interval_quality` is 0.5 when your intervals score the same as the naive rule's, approaches 1 for
 a sharp interval that contains the truth, and approaches 0 for a very wide one or a far miss.
+From scorer 5.2.1 the interval part can score above 0.5 only as far as the point forecast beats
+the naive rule: `interval_quality` is capped at the larger of 0.5 and your `predictive_quality`.
+So an answer that keeps the naive rule's points and only narrows the band cannot score above the
+naive rule, while a band worse than the naive rule's still costs in full. The uncapped value is
+recorded as `raw_interval_quality` in the unit's diagnostics.
 Both legs lie in [0, 1], so the domain is `[0, 1]` and the worst value W is 0.0 (shown as -0.27
 on the leaderboard, where leaderboard = -0.27 + 1.27 × analysis). Coverage is still
 reported as a diagnostic, but no longer scored.
 
 Measured on a three-entity unit, everything identical except the interval (naive band
 `[0.5, 3.5]`): the naive band scored **+0.383**, `[1.4, 1.9]` (missing all three values) **+0.297**
-and `[-1e9, 1e9]` **+0.233**. Under 5.0.0 the calibration leg was
-`- w_cal x |interval_coverage - interval_level|`, the same two intervals scored **-0.037** and
-**+0.203**, and widening strictly helped; that is no longer true.
+and `[-1e9, 1e9]` **+0.233**. Under scorer 3.1.0 the calibration leg was
+`- w_cal x |interval_coverage - interval_level|` and width cost nothing: widening was rewarded
+until coverage reached 90%, and past 90% it cost at most `w_cal x 0.10 = 0.03` at the default
+weights. Width now costs.
 
 A classification unit whose numeric truth is only a 0/1 label code may declare
 `interval_leg = false` in its card's `[scoring.params]`; it is then scored on the label alone, as

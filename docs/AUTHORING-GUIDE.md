@@ -152,10 +152,10 @@ document that is not about its entity, cites offsets outside the document, is em
 characters or over 400 judge tokens, states **any** figure that no span it cites carries (read
 against the whole cited span; a span over 8,000 characters anchors no figure; dates, periods,
 counts of periods and identifiers are not figures; numbers inside the unit's own entity names or
-tickers are exempt, and so is a figure that exactly equals a scored value you submitted: your
+tickers are exempt, and so is a figure that equals a scored value you submitted: your
 point forecast on a regression or ranking unit, and your interval bounds only when the unit's
-interval leg is scored; your rank is never exempt, and no scale, percent-versus-ratio or rounding
-tolerance applies to your own values), or when the judge finds the passage **contradicts** it
+interval leg is scored; the passages' scale steps apply but no rounding, a figure whose written
+direction contradicts the value's sign is not exempt, and your rank is never exempt), or when the judge finds the passage **contradicts** it
 (three-way contradiction probability above `contradiction_bar` = 0.9). A word-for-word quote of a
 span it cites passes the figure check and is not put to the judge; a verbatim quote passes even when the span it cites is over 8,000 characters (the quote is
 looked for in the first 200,000 characters of the span); the 8,000-character cap applies to
@@ -251,8 +251,10 @@ old leaderboard scale (`-0.27 + 1.27 x analysis`: 0 shows -0.27, the old worst c
 1.0); `reasoning` is in [0, 1]. The bonus is uncapped, so the maximum is 1.25. A keyed unit with
 no judged reasons (missing, not judged, or refused for a cap or the deny list) adds 0 to the
 bonus: leaving reasons out never costs anything. A block that fails the schema is different (see
-"The field" above). Reasoning is judged only on keyed (held-out) units, not on public dev units, but
-the format is the same everywhere: practise it on the dev units.
+"The field" above). Reasoning is graded offline after the Final, on the held-out units, and never
+appears on a CodaBench board, the Development leaderboard included; the Development leaderboard
+shows the analysis score only. The reasons format is the same everywhere, so practise it on the
+Development practice units.
 
 **Old scores and resubmitting.** Leaderboard scores already posted under the earlier scorer stay
 as they were (frozen, not re-scored). A submission made with the new starter package is scored

@@ -755,7 +755,7 @@ def build_ensemble_judge(
         raise ImportError(
             "qfbench2-common is required to build EnsembleNLIJudge. "
             "Install it with: "
-            'pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.3#subdirectory=common"'
+            'pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.5.0#subdirectory=common"'
         )
 
     effective_model_ids: list[str] = (
@@ -1049,6 +1049,7 @@ def check_answer(
         contradiction_bar=float(params.contradiction_bar),
         entity_admits=_entity_admits(corpus),
         entity_names=unit_entity_names(ctx["_task"]),
+        interval_level=params.interval_level,
     )
     checks = tuple(
         ClaimCheck(
@@ -1144,7 +1145,7 @@ if __name__ == "__main__":
             "WARNING: qfbench2-common is not installed. "
             "Cannot build EnsembleNLIJudge. "
             "Install with: "
-            'pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.4.3#subdirectory=common"',
+            'pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.5.0#subdirectory=common"',
             file=sys.stderr,
         )
     elif not _TRANSFORMERS_AVAILABLE:

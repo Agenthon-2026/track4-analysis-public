@@ -35,5 +35,5 @@
       "corpus_ref": "corpus/"
     }
   ],
-  "notes": "This is the public worked exemplar for Track 4 (Explainability). The resolved outcome is NOT included here; it lives in the private repo. A single-entity table is used for simplicity; real tasks have 3–30 entity rows."
+  "notes": "This is the public worked exemplar for Track 4 (Explainability). The resolved outcome is NOT included here; the organizers hold it. A single-entity table is used for simplicity; real tasks have 3–30 entity rows."
 }

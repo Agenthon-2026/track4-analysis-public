@@ -7,8 +7,8 @@
       "path": "card.toml",
       "role": "input",
       "license": "Public domain (US government works: BLS CES, Census MARTS/M3/housing starts, Federal Reserve G.17, BEA personal income), accessed via ALFRED (Federal Reserve Bank of St. Louis); BLS announcement text public domain",
-      "sha256": "4afcb6354b44c917fe584331415434b7de337dcce91ebb251742315c81b1656f",
-      "bytes": 4548,
+      "sha256": "afecc435290072b2385d303c76dadafc37deb6d7d97fc50173e9e693e0f858d6",
+      "bytes": 4612,
       "split": "public-dev",
       "redistributable": true
     },
@@ -16,8 +16,8 @@
       "path": "task.json",
       "role": "input",
       "license": "Public domain (US government works: BLS CES, Census MARTS/M3/housing starts, Federal Reserve G.17, BEA personal income), accessed via ALFRED (Federal Reserve Bank of St. Louis); BLS announcement text public domain",
-      "sha256": "3ad13069443125c9bab5254c457c7107f9854ac8564385d3713997397fe46826",
-      "bytes": 8389,
+      "sha256": "47fbddf457b5ab9a848bd8b754a9dcd7b0888cfab703cfec43449029bd12dd62",
+      "bytes": 8397,
       "split": "public-dev",
       "redistributable": true
     },

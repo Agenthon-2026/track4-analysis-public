@@ -41,7 +41,7 @@ NAIVE_BAND = (1.5, 2.5)  # flat naive interval: covers y=2 only
 
 
 def _is_row(lo: float, hi: float, y: float, alpha: float) -> float:
-    """The ticket's formula, written out independently of the scorer."""
+    """The interval-score formula, written out independently of the scorer."""
     return (
         (hi - lo) + (2.0 / alpha) * max(lo - y, 0.0) + (2.0 / alpha) * max(y - hi, 0.0)
     )
@@ -153,8 +153,11 @@ def test_answering_the_naive_rule_scores_exactly_one_half_on_both_legs(
 
 
 def test_a_sharp_hit_scores_near_one(tmp_path: pathlib.Path) -> None:
+    """True points with a sharp covering band. From 5.2.1 the interval leg is capped by the
+    prediction leg, so the points must beat the naive rule's too (see test_interval_cap.py)."""
     unit = _unit(tmp_path)
-    outcome = _score(tmp_path, unit, _answer(SHARP_HIT))
+    outcome = _score(tmp_path, unit, _answer(SHARP_HIT, points=TRUTH))
+    assert outcome.diagnostics["predictive_quality"] == pytest.approx(1.0)
     iq = outcome.diagnostics["interval_quality"]
     assert iq == pytest.approx(_iq(SHARP_HIT), abs=1e-12)
     assert iq > 0.99
@@ -320,8 +323,9 @@ def test_the_scorer_version_is_the_adopted_release() -> None:
     # 5.1.1 = 5.1.0 plus the two citation guards (test_citation_span_guards.py); 5.1.2 = the
     # review fixes (test_scorer_5_1_2_fixes.py); 5.1.3 = the narrowed own-value exemption
     # (test_own_value_exemption.py); 5.2.0 = the per-claim faithfulness penalty
-    # (test_claim_penalty.py).
-    assert S.SCORER_VERSION == "5.2.0"
+    # (test_claim_penalty.py); 5.2.1 = the interval leg capped by the prediction leg
+    # (test_interval_cap.py).
+    assert S.SCORER_VERSION == "5.2.1"
 
 
 def test_the_interval_score_is_the_toolkits_and_faults_as_the_tracks() -> None:

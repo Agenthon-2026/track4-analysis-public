@@ -10,8 +10,10 @@ Measured on a three-entity unit, everything identical except the interval:
     [1.4, 1.9]      -> score -0.037, coverage 0.0
     [-1e9, 1e9]     -> score +0.203, coverage 1.0
 
-The entire calibration leg is `w_cal * |interval_coverage - interval_level|`, so on any single
-unit widening strictly helps. Advice to narrow was not merely unenforced, it was backwards.
+The entire calibration leg was `w_cal * |interval_coverage - interval_level|`, and width cost
+nothing: widening was rewarded until coverage reached the interval level, and past it cost at
+most `w_cal * (1 - interval_level)` (0.03 at the default weights). Advice to narrow was not
+merely unenforced, it was backwards.
 
 (That was scorer 5.0.0. From 5.1.0 the interval leg is a Gneiting-Raftery interval score against
 the naive interval, `interval_score` in the code; the docs describe it under that name, so every

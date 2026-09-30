@@ -35,8 +35,8 @@ def test_the_track4_scorer_version_is_pinned():
     Changing it is a scoring change that participants are told about, so a bump must update this pin
     on purpose.
     """
-    assert SCORER_VERSION == "5.2.0", (
-        f"SCORER_VERSION is {SCORER_VERSION}; the published Track 4 scorer version is 5.2.0. "
+    assert SCORER_VERSION == "5.2.1", (
+        f"SCORER_VERSION is {SCORER_VERSION}; the published Track 4 scorer version is 5.2.1. "
         "Update this pin only together with a published scoring notice."
     )
 

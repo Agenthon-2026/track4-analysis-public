@@ -7,8 +7,8 @@
       "path": "card.toml",
       "role": "input",
       "license": "Public domain (US government works: U.S. Department of the Treasury / TreasuryDirect auction results)",
-      "sha256": "2a9234d02746d26e3d63dcf8f723b20b98aed95e8ad70f1332af87aa43c0bffb",
-      "bytes": 4219,
+      "sha256": "2f0cb7ac7bbde4276097c351c5125cf41a45b462083e2a295f1d0f2f41537b67",
+      "bytes": 4283,
       "split": "public-dev",
       "redistributable": true
     },
@@ -16,8 +16,8 @@
       "path": "task.json",
       "role": "input",
       "license": "Public domain (US government works: U.S. Department of the Treasury / TreasuryDirect auction results)",
-      "sha256": "d5a97aff5d6ad7535d74da6529adc9d8e402ec4e59704bbd8b0f78237f77b5d7",
-      "bytes": 4724,
+      "sha256": "6719117c6ad6d3187758abc2da923592eecb93fe2e53e23b9addfa5fbf7e6ac5",
+      "bytes": 4732,
       "split": "public-dev",
       "redistributable": true
     },

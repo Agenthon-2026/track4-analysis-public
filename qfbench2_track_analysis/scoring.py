@@ -68,7 +68,9 @@ scores: the point forecast on a regression or ranking unit, the interval bounds 
 interval leg is actually scored (declared AND numeric truth, the one predicate
 `_interval_leg_scored` the composite also uses, so a pure-label unit's bounds are never exempt),
 never the rank. Before, any submitted value (rank and unscored bounds included) exempted every
-figure it matched after scale re-basing and rounding.
+figure it matched after scale re-basing and rounding. 5.2.1 (rule "every") allows the scale steps
+again, exactly and without rounding, and refuses a figure whose written direction contradicts
+the value's sign (`numeric._is_own`).
 
 The interval score itself now comes from the toolkit
 (``qfbench2_common.scoring.faithfulness.mean_interval_score``); the formula is unchanged, and
@@ -93,6 +95,18 @@ forward pass. ``penalty_k`` = 1 and ``contradiction_bar`` = 0.9 are fixed scorer
 ``faithfulness_threshold`` is retired: the legacy value 0.80 that every shipped card and plan
 carries is mapped EXPLICITLY to the 5.2.0 defaults (recorded as ``faithfulness_rule`` in the
 diagnostics), and any other value is refused as an organizer fault rather than read silently.
+
+5.2.1 (decided 2026-09-29) caps the interval leg by the prediction leg: the interval part can
+score above 0.5 only as far as the point forecast beats the naive rule, that is
+``interval_quality = min(naive_IS / (naive_IS + IS), max(0.5, quality))``. Before, an answer that
+copied the naive rule's points and narrowed its band scored above the naive rule with no
+information, because the declared naive bands can be wider than the outcomes needed. Below 0.5
+nothing changes, so a band that misses still costs. The uncapped value is recorded as
+``raw_interval_quality`` in the diagnostics. The same version reads equivalent number forms in
+the claim check (`numeric`: a fraction of a point, a number in words, glued suffixes), stops
+reading dates, index bases and rule numbers as amounts, and makes the own-value exemption
+direction- and scale-aware, float-noise free, and inclusive of the "±" half-width and the unit's
+interval level.
 """
 
 from __future__ import annotations
@@ -151,7 +165,7 @@ DOMAIN_MAX = 1.0
 
 #: Bumped whenever the composite, the gates or the evidence semantics change. Recorded in
 #: provenance so a leaderboard can be attributed to an implementation rather than to a repo state.
-SCORER_VERSION = "5.2.0"
+SCORER_VERSION = "5.2.1"
 
 #: Which figures of a claim its cited spans must carry. "every" (the whole cited span) is the
 #: 5.2.0 rule; "any" (the judge window) is the earlier rule. A switch for the measurement.
@@ -816,6 +830,7 @@ def _g3_domain_semantics(ctx: dict[str, Any]) -> GateResult:
         entity_admits=_entity_admits(corpus),
         require_window=bool(ctx.get("_require_judge_window", False)),
         entity_names=unit_entity_names(ctx["_task"]),
+        interval_level=params.interval_level,
     )
     ctx["_claim_report"] = claims
     ctx["_faithfulness"] = float(claims.faithfulness)
@@ -1279,6 +1294,7 @@ def evaluate_claims(
     require_window: bool = False,
     figure_rule: str | None = None,
     entity_names: Sequence[str] = (),
+    interval_level: float | None = None,
 ) -> ClaimReport:
     """The per-claim faithfulness verdicts (5.2.0): which claims are demonstrably false.
 
@@ -1318,6 +1334,8 @@ def evaluate_claims(
         submitted = _scored_own_values(
             aligned, index, target_type=target_type, interval_scored=interval_scored
         )
+        # 5.2.1: a "±" half-width of the own interval is exempt only when the interval is scored.
+        intervals = ((aligned.lo[index], aligned.hi[index]),) if interval_scored else ()
         for claim in aligned.claims_by_entity[index]:
             wrong = entity_admits is not None and any(
                 not entity_admits(entity_id, cite) for cite in claim.citations
@@ -1360,6 +1378,8 @@ def evaluate_claims(
                     rule="every",
                     names=entity_names,
                     span_cap=FIGURE_SPAN_CAP,
+                    own_intervals=intervals,
+                    own_levels=(interval_level,),
                 )
             else:
                 status = claim_number_status(claim.text, spans, submitted=submitted)
@@ -1603,10 +1623,10 @@ def _composite_value(parts: Mapping[str, float | None]) -> float:
     """The composite, narrowed to a float.
 
     Only the interval keys (`interval_coverage`, `interval_score`, `naive_interval_score`,
-    `interval_quality`) are nullable in a `_composite` result -- they are None exactly for a
-    pure-label unit, where the interval leg does not apply. The composite itself is always a
-    number, and a None here would mean `_composite` returned something it has no branch for, so
-    this raises rather than letting `clip_to_domain` receive a None it would crash on later.
+    `raw_interval_quality`, `interval_quality`) are nullable in a `_composite` result -- they are
+    None exactly for a pure-label unit, where the interval leg does not apply. The composite itself
+    is always a number, and a None here would mean `_composite` returned something it has no branch
+    for, so this raises rather than letting `clip_to_domain` receive a None it would crash on later.
     """
     value = parts["composite"]
     if value is None:
@@ -1731,6 +1751,7 @@ def _composite(
             "interval_coverage": None,
             "interval_score": None,
             "naive_interval_score": None,
+            "raw_interval_quality": None,
             "interval_quality": None,
             "composite": float(quality),
         }
@@ -1759,7 +1780,13 @@ def _composite(
     own_is = mean_interval_score(
         aligned.lo, aligned.hi, true_values, params.interval_level
     )
-    interval_quality = naive_is / (naive_is + own_is)
+    raw_interval_quality = naive_is / (naive_is + own_is)
+    # 5.2.1: interval credit above the naive rule's 0.5 never exceeds the prediction leg's own
+    # credit above 0.5. The declared naive bands can be wide, so narrowing the band around the
+    # naive point used to score above the naive rule with no information. With this cap an answer
+    # whose points are the naive rule's (quality exactly 0.5) scores at most 0.5 whatever its band.
+    # Below 0.5 the interval leg is unchanged, so a bad band still costs.
+    interval_quality = min(raw_interval_quality, max(0.5, float(quality)))
     # Coverage is no longer scored; it stays as an operator diagnostic.
     covered = sum(
         1 for lo, hi, y in zip(aligned.lo, aligned.hi, true_values) if lo <= y <= hi
@@ -1772,6 +1799,7 @@ def _composite(
         "interval_coverage": float(coverage),
         "interval_score": float(own_is),
         "naive_interval_score": float(naive_is),
+        "raw_interval_quality": float(raw_interval_quality),
         "interval_quality": float(interval_quality),
         "composite": float(composite),
     }

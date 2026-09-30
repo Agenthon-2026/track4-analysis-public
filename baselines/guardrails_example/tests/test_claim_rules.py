@@ -242,3 +242,45 @@ def test_the_preview_factor_is_the_soft_floor(unit: Path, pad: int, factor: floa
     got = claim_penalty_preview(ans, unit, token_counter=words)
     assert (got["false"], got["claims"], got["entities"]) == (1, pad + 2, 2)
     assert got["factor"] == pytest.approx(factor)
+
+
+def test_the_preview_exempts_the_interval_level_like_the_gate(unit: Path) -> None:
+    """"our 90% band" names the unit's interval level, an own value from 5.2.1: not a false claim."""
+    got = claim_penalty_preview(answer([whole("SYNDOC_A_20260201", "Issuer A: our 90% band.")]), unit,
+                                token_counter=words)
+    assert got["false"] == 0
+
+
+# ---------------------------------------------------------------- premise quotes (grader rule)
+
+_QUOTE_DOC = (
+    "Zent filed at https://example.invalid/zent/report today. Zent units/ ledger is closed. "
+    "The canary release shipped. Zent margins held steady."
+)
+
+
+def _premise_findings(premise: str) -> list[str]:
+    corpus = {"d": CorpusDoc("d", _QUOTE_DOC, "2026-01-01")}
+    ans = {"entity_predictions": [], "submitted_reasons": [_reason("r1", premise)]}
+    return [f.code for f in check_submitted_reasons(ans, corpus, "2026-02-15")]
+
+
+@pytest.mark.parametrize(
+    "premise",
+    [
+        pytest.param("https://example.invalid/zent/report", id="url-only"),
+        pytest.param("units/", id="units-token"),
+        pytest.param("canary", id="canary-token"),
+        pytest.param("canary release", id="two-word-quote"),
+        pytest.param("Filed at https://example.invalid/zent/report;", id="own-word-plus-url"),
+    ],
+)
+def test_a_short_or_url_premise_is_not_an_exempt_quote(premise: str) -> None:
+    """The grader exempts a premise only as a quote of at least 3 words, URLs masked with "#"."""
+    assert "deny_list" in _premise_findings(premise)
+
+
+def test_a_three_word_corpus_quote_with_a_url_is_exempt() -> None:
+    assert _premise_findings("Zent filed at https://example.invalid/zent/report today.") == []
+    assert _premise_findings("The canary release shipped.") == []
+    assert "deny_list" in _premise_findings("The canary release shipped early.")

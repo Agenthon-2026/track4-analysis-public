@@ -13,11 +13,11 @@ name = "qfbench2-track-analysis"
 # production judge or raises an organizer fault (it previously built none and defaulted
 # faithfulness to 1.0), the entailment hypothesis comes from the submitted prediction rather than
 # from participant-authored claim text, alignment is driven by the trusted entity roster, and an
-# inadmissible unit scores W instead of `None` (W = -0.27 through scorer 5.0.0; W = 0.0 from scorer 5.1.0, whose
+# inadmissible unit scores W instead of `None` (W = -0.27 in scorer 3.1.0; W = 0.0 in scorer 5.2.0, whose
 # composite legs are both ratios in [0, 1]). A consumer pinned to 2.x must read the
 # "What changed" notes in `qfbench2_track_analysis/scoring.py` before moving. This is also the ONE
 # implementation: there is no second copy elsewhere.
-version = "5.2.0"
+version = "5.2.1"
 description = "QFBench 2.0 Track-4 verifier/scorer: qfbench2_track_analysis.scoring.build_verifier(ctx) (rankable, mandatory production judge) and build_smoke_verifier(ctx) (non-rankable preview). The shared faithfulness primitives live in qfbench2-common."
 requires-python = ">=3.13"
 dependencies = [
@@ -31,7 +31,7 @@ dependencies = [
   # which installs the toolkit from a local checkout; a real run is reproducible by the
   # image DIGEST, not by this line.
   #
-  # From scorer 5.1.3 the floor is 2.5.0: `scoring.mean_interval_score` calls
+  # From scorer 5.2.0 the track needs at least 2.5.0: `scoring.mean_interval_score` calls
   # qfbench2_common.scoring.faithfulness.mean_interval_score, which no release before 2.5.0
   # carries (v2.4.4 does not).
   #

@@ -7,8 +7,8 @@
       "path": "task.json",
       "role": "input",
       "license": "Public domain (US government works: SEC EDGAR filings; Federal Reserve / FRED and BEA series)",
-      "sha256": "268d3b1c54f06d016288c706324e4572ae5f9c0289833555d29575bd2685a14d",
-      "bytes": 2165,
+      "sha256": "ae33b39262e1af55c1c9eb63b8ab83aadcc55492b1be0a47b6d4fdad0383b97e",
+      "bytes": 2159,
       "split": "public-dev",
       "redistributable": true
     },

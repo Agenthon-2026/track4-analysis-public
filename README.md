@@ -60,7 +60,7 @@ features plus evidence-grounded reasoning.
 | `docs/CATEGORIES.md` | The prediction families published here, read off the shipped units |
 | `docs/AUTHORING-GUIDE.md` | How a unit is laid out, field by field, and who reads each field |
 | `units/t4-EXAMPLE-eps-beat/` | A complete worked example: task file, cross-section table, corpus, example answer |
-| `units/` (ten more) | Practice units — real corpora, real task shapes, no resolved outcomes; not scored |
+| `units/` (ten more) | Development practice units — real corpora, real task shapes, retired from the held-out set; no outcomes ship, and the organizers score your answers on the Development leaderboard |
 | `qfbench2_track_analysis/scoring.py` | The reference scorer, for all three target types (`scoring/scoring.py` is a back-compat shim that re-exports it) |
 | `faithfulness/judge.py` | The NLI faithfulness judge you can run locally before submitting |
 | `baselines/` | A runnable stdlib RAG agent, a BM25 + house-model scaffold, and an optional citation rail |
@@ -137,7 +137,7 @@ it must be a permutation of 1..n over the full entity roster.
 The common mistake, measured: putting the **rank integer** in `point_forecast` (1 = highest)
 inverts the ordering against a metric where larger is better, and scores
 `predictive_quality = 0.0`, composite `0.15`, against `1.0` / `0.85` for the metric values
-themselves (scorer 5.1.0, interval equal to the naive rule's; 5.0.0 measured `-0.03` / `0.67`). Omitting `point_forecast` on a ranking unit is refused outright. In every case there is one entry in
+themselves (with an interval equal to the naive rule's). Omitting `point_forecast` on a ranking unit is refused outright. In every case there is one entry in
 `entity_predictions` per entity row.
 
 Use the executable `analysis.schema.json` bundled with `qfbench2-common` for required fields
@@ -151,7 +151,7 @@ the prediction appropriate to its target type, as described above.
 **These are not partial-credit penalties.** A missing `interval.lo` or `interval.hi`, an empty or
 absent `claims` array, or an `interval.level` other than the card's — on *any* single entity row —
 fails `g1_schema` for the **whole unit**: the unit is scored `t4.schema_invalid`
-(`SCHEMA_INVALID_OUTPUT`) at the worst-case `W = 0.0` (5.0.0: `-0.27`; 0.0 shows as -0.27 on the leaderboard, where
+(`SCHEMA_INVALID_OUTPUT`) at the worst-case `W = 0.0` (scorer 3.1.0: `-0.27`; 0.0 shows as -0.27 on the leaderboard, where
 leaderboard = -0.27 + 1.27 × analysis), and no coverage or faithfulness number is
 computed at all. Verified by running the scorer on each case.
 
@@ -168,11 +168,11 @@ computed at all. Verified by running the scorer on each case.
 
 The image-size row remains the published recommendation and rejection policy; it is not a
 verified automatically enforced image-size quota. The image-layer limit is a different resource.
-See the [image submission guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.0/docs/IMAGE-SUBMISSIONS.md)
+See the [image submission guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.1/docs/IMAGE-SUBMISSIONS.md)
 for anonymous public pulls and organizer-confirmed private mirrors.
 
 For CPU, memory and GPU settings, read the unit card and the
-[Development runtime guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.0/docs/DEVELOPMENT-RUNTIME.md).
+[Development runtime guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.1/docs/DEVELOPMENT-RUNTIME.md).
 The `api` category does not remove a card's GPU grant for permitted local code or authorize
 an additional model server. The unit clock includes container creation and any required pull;
 the ingestion stage has a separate 12-hour clock across sequential units, and scoring has its
@@ -254,9 +254,9 @@ a ceiling rather than a floor (`nemoguardrails` and `nvidia-nat` both pin `<3.14
 Track 4 inherits scoring utilities from the shared toolkit repository. Install them with:
 
 ```bash
-# Pin toolkit v2.5.0 for the current submission commands and fixtures.
-# The installed package reports version 2.5.0.
-pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.5.0#subdirectory=common"
+# Pin toolkit v2.5.1 for the current submission commands and fixtures.
+# The installed package reports version 2.5.1.
+pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.5.1#subdirectory=common"
 ```
 
 > **Pin a tag, never a branch.** Installing from a moving ref means your local result and your
@@ -388,7 +388,7 @@ python baselines/baseline_agent.py \
 
 ## Scoring formula
 
-Scorer 5.2.0. For a unit that passes the structural checks (schema, roster, citations resolved
+Scorer 5.2.1. For a unit that passes the structural checks (schema, roster, citations resolved
 and dated on or before the cutoff):
 
 ```
@@ -400,7 +400,9 @@ score     = composite × (1 − F / (F + min(T, 3 × E)))
 Default weights: `w_acc = 0.70`, `w_cal = 0.30`; `interval_level = 0.90`. The faithfulness
 factor is described above and in `docs/CONCEPTS.md`, "Faithfulness". `interval_quality =
 naive_IS / (naive_IS + IS)` compares your mean interval score with the unit's declared naive
-interval (0.5 = as good as the naive rule's; see "Interval calibration" below). The
+interval (0.5 = as good as the naive rule's; see "Interval calibration" below). From scorer
+5.2.1 the interval part can score above 0.5 only as far as the point forecast beats the naive rule:
+`interval_quality` is capped at the larger of 0.5 and `predictive_quality`. The
 `predictive_quality` component depends on the task's target type -- declared as `target.type` in
 `task.json`, and mirrored as `target_type` under `[scoring.params]` in `card.toml`:
 
@@ -449,7 +451,7 @@ non-rankable; it checks the interface, not prediction accuracy or production fai
 # baselines/requirements.txt is comments only -- the minimal baseline is standard library
 # by design -- so this line installs nothing. It is here because step 4 and step 5 need the
 # shared toolkit, which brings jsonschema with it.
-pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.5.0#subdirectory=common"
+pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.5.1#subdirectory=common"
 
 # 2. Run the RAG baseline
 python baselines/baseline_agent.py \
@@ -502,16 +504,19 @@ The reasons contract is in `SUBMISSION_CLI.md`, "How reasoning is scored".
 call. Do not rely on post-processing to discard stale citations — the stale information may have
 already affected your reasoning.
 
-**Interval calibration.** From scorer 5.1.0 the interval leg is an `interval_score` ratio against
+**Interval calibration.** The interval leg is an `interval_score` ratio against
 the unit's declared naive interval: per row, the width `hi - lo` plus `2/alpha` (20 at 90%) times
 the distance by which the truth falls outside `[lo, hi]`, averaged over the roster, and scored as
 `naive / (naive + yours)` — 0.5 means as good as the naive rule's interval. Width now costs, and so
 does a miss. Measured on a three-entity unit, everything identical except the interval (naive band
 `[0.5, 3.5]`): the naive band itself scored **+0.383**, `[1.4, 1.9]` (missing all three values)
 **+0.297**, and `[-1e9, 1e9]` **+0.233** — the trivially wide interval is now the worst of the three.
-(5.0.0 scored only `|interval_coverage - 0.90|`, and the same two intervals measured **-0.037** and
-**+0.203**, so widening strictly helped.) Aim for the narrowest interval that still contains the
-value. The learned calibration head is **not shipped** (see `baselines/README.md`); the minimal
+(Scorer 3.1.0 scored only the coverage gap `|interval_coverage - 0.90|` and charged nothing
+for width: widening was rewarded until coverage reached 90%, and past 90% it cost at most 0.03 at
+the default weights.) Aim for the narrowest interval that still contains the value. The interval
+part can score above 0.5 only as far as the point forecast beats the naive rule, so narrowing the
+band around the naive rule's own points earns nothing above the naive rule. The learned
+calibration head is **not shipped** (see `baselines/README.md`); the minimal
 baseline emits a fixed-band interval, which is a floor to beat, not a starting point to tune.
 
 **Firewall.** Your agent runs on a restricted network: no open internet, egress only through the

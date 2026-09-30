@@ -190,3 +190,15 @@ def test_a_rankable_run_without_contradiction_is_refused(
     outcome = _score(tmp_path / "local", _local(), production)
     assert outcome.diagnostics["contradiction_applied"] is True
     assert outcome.diagnostics["false_claim_count"] == 2
+
+
+def test_local_preview_exempts_the_interval_level_like_the_gate(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A claim that names the unit's interval level ("our 90% band") states the task's parameter,
+    not evidence: the local check exempts it exactly as the gate does (scorer 5.2.1)."""
+    unit, answer = _unit_and_answer(tmp_path)
+    first = answer["entity_predictions"][0]["claims"][0]
+    answer["entity_predictions"][0]["claims"] = [{**first, "claim": "Our 90% band."}]
+    result = check_answer(answer, build_unit_context(unit), _local())
+    assert [c.status for c in result.claims] == ["neutral"]

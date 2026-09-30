@@ -178,5 +178,6 @@ def test_the_scorer_version_is_adopted() -> None:
     # 5.1.1 = 5.1.0 plus the two citation guards (test_citation_span_guards.py); 5.1.2 = the
     # review fixes (test_scorer_5_1_2_fixes.py); 5.1.3 = the narrowed own-value exemption
     # (test_own_value_exemption.py); 5.2.0 = the per-claim faithfulness penalty
-    # (test_claim_penalty.py).
-    assert S.SCORER_VERSION == "5.2.0"
+    # (test_claim_penalty.py); 5.2.1 = the interval leg capped by the prediction leg
+    # (test_interval_cap.py).
+    assert S.SCORER_VERSION == "5.2.1"

@@ -112,7 +112,7 @@ the role address the shipped unit cards carry in `author_email`: `qfbench@neurip
 - `qfbench2_track_analysis/` — the ONE Track-4 scoring implementation (do not change the gate
   names, the composite formula, the metric domain `[0.0, 1.0]` or the worst-case value
   `W = 0.0` without organizer review; W shows as -0.27 on the leaderboard, where
-  leaderboard = -0.27 + 1.27 × analysis). Current scorer: 5.2.0. Faithfulness is a per-claim
+  leaderboard = -0.27 + 1.27 × analysis). Current scorer: 5.2.1. Faithfulness is a per-claim
   penalty, not an admission gate: the composite is multiplied by the soft floor
   `1 - F/(F + min(T, 3E))` (F false claims, T the others, E the roster count), with k = 1 and a
   contradiction bar of 0.9 as fixed constants. Every figure in a claim must appear in a span it
@@ -120,8 +120,9 @@ the role address the shipped unit cards carry in `author_email`: `qfbench@neurip
   a cited span over 8,000 characters anchors no figure, a claim over 400 judge tokens is
   malformed, and a verbatim quote is not sent to the judge. Classification and ranking
   prediction legs are anchored to the unit's naive rule, and a unit without an interval leg is
-  scored on the prediction leg alone. Scorer 5.1.0 introduced the interval-score leg against the
-  naive interval (domain `[-0.27, 1.0]` -> `[0.0, 1.0]`, W `-0.27` -> `0.0`). A
+  scored on the prediction leg alone. Compared with scorer 3.1.0, the interval leg is now an
+  interval-score ratio against the naive interval (domain `[-0.27, 1.0]` -> `[0.0, 1.0]`, W
+  `-0.27` -> `0.0`). A
   `submitted_reasons` block that does not match the schema (an empty list, more than 3 reasons,
   or a reason missing a required field) makes the whole answer invalid, like any schema error;
   run the local checker (`baselines/guardrails_example`) first. Leaving reasons out never costs

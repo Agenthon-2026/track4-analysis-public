@@ -22,7 +22,7 @@ or consume it as a leading positional (the `ENTRYPOINT ["python", "agent.py"]` p
 every unit — as `127` if the verb is not on `PATH`, as `126` if it is present but not executable,
 or as whatever your own argument parser exits with if it consumes and rejects it. All three are
 recorded as **your** failure, not an organizer fault, and the unit takes the pre-committed worst
-value **W = 0.0** (scorer 5.1.0; 5.0.0 used −0.27). On the leaderboard it shows as −0.27
+value **W = 0.0** (scorer 3.1.0 used −0.27). On the leaderboard it shows as −0.27
 (leaderboard = −0.27 + 1.27 × analysis). Measured: an absent `answer.json` is `no_output`
 at 0.0, and an empty one is `malformed_output` at 0.0. Zero is the bottom of the `[0, 1]` domain,
 so a unit you fail to produce output for scores no better than the worst admissible answer, and
@@ -42,11 +42,11 @@ window; setup/provisioning and container creation/execution after activation can
 retrying under the same allocation resets neither the window nor request counters. Credentials
 last at most 7,200 seconds from issue and never beyond that fixed end. Deployment and verification
 remain required before opening; this changes no compute allowance.
-See the [Development runtime guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.0/docs/DEVELOPMENT-RUNTIME.md)
+See the [Development runtime guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.1/docs/DEVELOPMENT-RUNTIME.md)
 for applied limits and pending access status. Development settings do not certify Final resources.
 
 Build a `linux/amd64` image identified by its immutable digest. Follow the
-[image submission guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.0/docs/IMAGE-SUBMISSIONS.md)
+[image submission guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.1/docs/IMAGE-SUBMISSIONS.md)
 for anonymous public pulls and the organizer confirmation required before using a private mirror.
 A descriptor category or image-access field does not itself make a service available.
 
@@ -55,7 +55,7 @@ A descriptor category or image-access field does not itself make a service avail
 An upload is a **zip, not an image reference**. Push your `linux/amd64` image to a registry that
 allows anonymous pulls by digest (the image submission guide above), write `submission.json`
 with that digest (the sealed descriptor, see the
-[descriptor guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.0/starter-packs/track4/SUBMISSION-DESCRIPTOR.md)),
+[descriptor guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.1/starter-packs/track4/SUBMISSION-DESCRIPTOR.md)),
 then let the toolkit seal and pack it:
 
 ```bash
@@ -64,7 +64,7 @@ qfbench2 submission pack --descriptor submission.json --team-number <your team n
 
 `pack` asks for your Team Key on a hidden prompt, derives your `team_id`, and writes
 `submission.zip` containing `submission.json` and `team-claim.json` -- the
-[team-claim guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.0/starter-packs/track4/TEAM-CLAIM.md)
+[team-claim guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.1/starter-packs/track4/TEAM-CLAIM.md)
 explains the claim and what happens when it is wrong. Upload `submission.zip` on this track's
 CodaBench competition page from your team's designated CodaBench account; the page link was
 issued to registered teams at the Development opening and is in the participant announcements.
@@ -259,7 +259,7 @@ everything else to `simulate`. Six of the public dev units (`t3-gbatch-*`) are b
    contract above.)
 
 
-## How faithfulness is scored (Track 4, scorer 5.2.0)
+## How faithfulness is scored (Track 4, scorer 5.2.1)
 
 Faithfulness is a **per-claim penalty**, not an admission gate. Each claim in
 `entity_predictions[].claims` is either **false** or **neutral**, and each false claim costs a share of the unit. The unit's analysis score is multiplied by
@@ -297,10 +297,15 @@ other claims are fixed scorer constants.
 **Claims are extractive facts.** State what the cited passage says, with the figures it carries;
 **every figure in a claim must appear in a passage the claim cites**. A figure you derived (a
 change, a ratio, an average) belongs in `submitted_reasons` (the `mechanism`), which is where
-derivations are judged, not in a claim. Exempt: a figure that exactly equals your own scored point
-forecast (or, when the interval is scored, your interval bounds), and a number that is part of one
-of the unit's own entity names or tickers ("Phillips 66", "S&P 500"). Dates, periods, counts of
-periods ("13 weeks") and identifiers are not figures. A claim that quotes a span it cites word for
+derivations are judged, not in a claim. Exempt: a figure that equals your own scored point
+forecast (or, when the interval is scored, your interval bounds), at the passages' scale steps
+and unless the direction you write contradicts its sign ("declined 20 bps" is not +20), a "±"
+half-width equal to half your scored interval's width, the unit's interval level beside an interval word ("the 90% band"), and a
+number that is part of one of the unit's own entity names or tickers ("Phillips 66", "S&P 500").
+Dates, periods, counts of periods ("13 weeks") and identifiers are not figures. Equivalent forms
+are read as the same figure: a fraction of a point ("1/4 percentage point" or "quarter-point" is
+25 bps), a number in words before a unit ("four basis points"), and glued forms ("7.3x",
+"$212mm", "1.5pp"). A claim that quotes a span it cites word for
 word passes the figure check and is not put to the judge; a verbatim quote passes even when the span it cites is over 8,000 characters (the quote is
 looked for in the first 200,000 characters of the span); the 8,000-character cap applies to
 every other claim. A value from the task table is cited
@@ -365,13 +370,17 @@ a **bonus** on top of the analysis score (final-score/v2):
 
     final = -0.27 + 1.27 x analysis + 0.25 x reasoning
 
-`analysis` is your 0..1 analysis score after the per-claim faithfulness penalty, shown on the
+`analysis` is your 0..1 analysis score after the per-claim faithfulness penalty (it combines
+your prediction and, on units that score one, your interval; from scorer 5.2.1 the interval part
+can score above 0.5 only as far as the point forecast beats the naive rule), shown on the
 old leaderboard scale (`-0.27 + 1.27 x analysis`: 0 shows -0.27, the old worst case, and 1 shows
 1.0); `reasoning` is in [0, 1]. The bonus is uncapped, so the maximum is 1.25. A keyed unit with
 no judged reasons (missing, not judged, or refused for a cap or the deny list) adds 0 to the
 bonus: leaving reasons out never costs anything. A block that fails the schema is different (see
-"The field" above). Reasoning is judged only on keyed (held-out) units, not on public dev units, but
-the format is the same everywhere: practise it on the dev units.
+"The field" above). Reasoning is graded offline after the Final, on the held-out units, and never
+appears on a CodaBench board, the Development leaderboard included; the Development leaderboard
+shows the analysis score only. The reasons format is the same everywhere, so practise it on the
+Development practice units.
 
 **Old scores and resubmitting.** Leaderboard scores already posted under the earlier scorer stay
 as they were (frozen, not re-scored). A submission made with the new starter package is scored
@@ -418,9 +427,11 @@ text you wrote contains any of these, case-insensitively, as a substring: `leade
 `canary`, `://`, `/home/`, `units/`, `reference/`, `outcome.json`, `team_id`, `team name`,
 `participant_id`, `participant name`, `submission_id`, `other submission`. `mechanism` and
 `answer_implication` are always checked. Exempt: the corpus text your citations resolve to,
-and a `premise` that is, as a whole (surrounding whitespace aside), a verbatim quote of a
-corpus document; a premise that adds any word of your own is checked. So do not put URLs or
-file paths in your own words.
+and a `premise` that is a verbatim quote of a corpus document: with every URL masked, it has at
+least 3 words and, the document's URLs masked the same way, appears in one corpus document. A
+premise that adds any word of your own, a bare URL, a bare token such as `units/`, `canary` or
+`/home/`, and a quote of one or two words are checked. So do not put URLs or file paths in your
+own words.
 
 **Organiser faults.** If the grader fails on an organiser input (the task, the key, the
 corpus, the judge forms or the policy), the grading run stops, the organiser fixes it and the

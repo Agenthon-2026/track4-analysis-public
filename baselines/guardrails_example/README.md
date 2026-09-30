@@ -17,7 +17,7 @@ A third check, `check_submitted_reasons`, covers the optional `submitted_reasons
 reasoning grader reads: its shape, whether each citation resolves before the cutoff, the
 published caps, the deny list and content-duplicate reasons (see "Checking your reasons" below).
 
-A fourth, `check_claim_rules`, runs the scorer 5.2.0 **deterministic claim rules** on a whole
+A fourth, `check_claim_rules`, runs the scorer 5.2.1 **deterministic claim rules** on a whole
 answer with the scorer's own code (see "Checking your claims (scorer 5.2.0)" below). It is the
 only part of this rail that imports this repository's `qfbench2_track_analysis`; the other three
 are pure standard library.
@@ -26,7 +26,7 @@ are pure standard library.
 
 | File | What |
 |---|---|
-| `citation_rail.py` | The checks. `load_corpus`, `filter_retrieved` (retrieval-time date rail), `check_answer` (submission-time rail → findings list; pass `task=` to check `"task"` citations), `check_submitted_reasons` (the reasoning field's shape, caps, deny list and duplicates), `check_claim_rules` (the scorer's deterministic 5.2.0 claim rules). |
+| `citation_rail.py` | The checks. `load_corpus`, `filter_retrieved` (retrieval-time date rail), `check_answer` (submission-time rail → findings list; pass `task=` to check `"task"` citations), `check_submitted_reasons` (the reasoning field's shape, caps, deny list and duplicates), `check_claim_rules` (the scorer's deterministic 5.2.1 claim rules). |
 | `demo.py` | Offline demo on `units/t4-EXAMPLE-eps-beat`: an agent "accidentally" cites a live-fetched post-cutoff snippet and emits one malformed span; the rail flags both, the clean claim passes. It also checks three submitted reasons: two clean, one with a URL in its mechanism, which the deny list flags. |
 | `rails/` | Illustrative [NeMo Guardrails](https://github.com/NVIDIA/NeMo-Guardrails) wiring of the same checks as an output rail (`config.yml`, `flows.co`, `actions.py`). Requires `pip install nemoguardrails`; the demo does not. |
 | `tests/` | Unit tests for the rail checks. |
@@ -112,7 +112,7 @@ submit. The finding codes:
 | `cap_answer_bytes` | your per-entity answer, as compact JSON, exceeds 3,000 UTF-8 bytes | the unit's reasoning is not judged (0) |
 | `cap_reason_bytes` | your reasons (`reason_id`, `premise`, `mechanism`, `answer_implication`), as compact JSON, exceed 6,500 UTF-8 bytes | the unit's reasoning is not judged (0) |
 | `cap_evidence_bytes` | the resolved cited passages with their doc id and offsets, as compact JSON (URIs masked), exceed 46,500 UTF-8 bytes | the unit's reasoning is not judged (0) |
-| `deny_list` | a deny-list phrase in `mechanism` or `answer_implication`, or in a `premise` that is not wholly a verbatim corpus quote | the grader refuses that unit's reasoning (0); the analysis score is unaffected |
+| `deny_list` | a deny-list phrase in `mechanism` or `answer_implication`, or in a `premise` that is not a verbatim corpus quote of at least 3 words (URLs masked on both sides; a bare URL, `units/`, `canary` or a two-word quote is not one) | the grader refuses that unit's reasoning (0); the analysis score is unaffected |
 | `duplicate_reason` | the same `premise`, `mechanism` and `answer_implication` as an earlier reason (case, whitespace and invisible characters ignored) | that reason is not judged and covers no target reason; the others are judged |
 
 A `"task"` citation in a reason is a `reason_citation`: the grader resolves reason citations
