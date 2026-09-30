@@ -21,6 +21,7 @@ Every number here is synthetic.
 
 from __future__ import annotations
 
+import time
 from decimal import Decimal
 from typing import Any
 
@@ -32,6 +33,7 @@ from qfbench2_track_analysis.numeric import (
     claim_number_status,
     figures,
     missing_figures,
+    url_ranges,
 )
 from qfbench2_track_analysis.scoring import evaluate_claims
 
@@ -643,3 +645,82 @@ def test_every_written_half_width_form_is_exempt(claim: str) -> None:
 def test_a_half_width_is_never_the_interval_level(claim: str) -> None:
     miss, _ = missing_figures(claim, ["Zent note"], own_levels=(0.9,))
     assert miss != ()
+
+
+# --- numbers inside a web address are not figures (5.2.2) -------------------------------------------
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Zent filing (https://www.example.invalid/news/2031/05/release-17.html).",
+        "See www.example.invalid/data/series/42 today.",
+        "Source: https://example.invalid/a?id=77&y=2031 and more.",
+        "[link](https://ex.invalid/p/88) here",
+        "https://example.invalid/cgi-bin/browse?action=getcompany&CIK=0000999991",
+        "https://example.invalid/Archives/edgar/data/999991/000099999131000012/x.htm",
+        "http://example.invalid:8080/q",
+    ],
+)
+def test_numbers_inside_a_url_are_not_figures(text: str) -> None:
+    assert figures(text) == ()
+
+
+def test_figures_outside_a_url_are_still_read() -> None:
+    assert [
+        str(v)
+        for v in figures(
+            "Source: https://example.invalid/a?id=77, net $4.2B and 12 bps"
+        )
+    ] == [
+        "4.2E+9",
+        "12",
+    ]
+
+
+def test_a_url_in_a_claim_no_longer_makes_it_unanchored() -> None:
+    claim = "Zent revenue grew 12% per https://example.invalid/a?CIK=0000999991"
+    assert not _missing(claim, "Zent revenue grew 12%")
+
+
+def test_a_url_in_a_span_no_longer_anchors_a_figure() -> None:
+    span = "Zent filing at https://example.invalid/Archives/edgar/data/999991/0000999991-31-000012.txt"
+    assert _missing("Zent holds 999991 units", span)
+
+
+def test_a_wrong_figure_outside_the_url_is_still_checked() -> None:
+    assert _missing(
+        "Zent revenue grew 13% per https://example.invalid/12", "Zent revenue grew 12%"
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "see https\uff1a\uff0f\uff0fexample.invalid/series/42",
+        "see ht\u200btps://example.invalid/a?id=77",
+        "see https\u2236\u2044\u2044example.invalid/p/88",
+        "see //example.invalid/data/31",
+    ],
+)
+def test_numbers_inside_a_disguised_url_are_not_figures(text: str) -> None:
+    assert figures(text) == ()
+
+
+def test_a_long_letter_run_is_scanned_for_urls_in_linear_time() -> None:
+    """The URL scheme is bounded to 64 characters, so a 1 MB run of letters is scanned once, not
+    once per starting letter (unbounded, it took minutes). The bound is generous: about 0.1 s here."""
+    text = "a" * 1_000_000
+    start = time.perf_counter()
+    assert url_ranges(text) == []
+    assert time.perf_counter() - start < 1.0
+
+
+def test_a_scheme_up_to_64_characters_is_masked_whole() -> None:
+    scheme = "a" * 64
+    assert url_ranges(f"{scheme}://x.test/1 end") == [(0, 64 + len("://x.test/1"))]
+
+
+def test_a_longer_scheme_is_masked_from_its_last_64_characters() -> None:
+    """The fast check on the bound (the 1 MB timing test above takes minutes to fail): with an
+    unbounded scheme the whole 70-letter run would match from index 0."""
+    scheme = "a" * 70
+    assert url_ranges(f"{scheme}://x.test/1 end") == [(6, 70 + len("://x.test/1"))]

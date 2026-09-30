@@ -74,6 +74,9 @@ them to 25 bps), a number in words before a unit ("four basis points"), and glue
 "every" allows the span matcher's scale steps (exact, no rounding) and refuses a figure whose
 written direction contradicts the own value's sign (`_signed_figures`, `_is_own`); it also exempts
 a "±" half-width of the scored interval. `scripts/scan_number_forms.py` checks every corpus for forms this module misreads.
+
+**5.2.2** does not read numbers inside a web address as figures, disguised ones included (look-alike
+colons and slashes, invisible characters, a scheme-less "//host", a "www." host: `url_ranges`).
 """
 
 from __future__ import annotations
@@ -81,6 +84,7 @@ from __future__ import annotations
 import bisect
 import functools
 import re
+import unicodedata
 from collections.abc import Iterable, Sequence
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Literal
@@ -461,8 +465,86 @@ _SCALE_STEPS: tuple[int, ...] = tuple(range(-12, 13, 3)) + (-2, 2)
 _MAX_CHARS = 200_000
 
 
+#: Disguised URLs (scorer 5.2.2), the reasoning grader's own detection: a URL is found in a FOLDED view of
+#: the text, each character NFKC-normalised, the slash and colon look-alikes NFKC keeps apart read as
+#: "/" and ":", and format characters (Unicode category Cf) and Hangul fillers removed.
+_SLASH_LOOKALIKES = (
+    "⁄",
+    "∕",
+    "⧸",
+    "╱",
+    "⟋",
+    "〳",
+    "᜵",
+    "⳺",
+    "﹨",
+    "⹊",
+    "̸",
+)
+_COLON_LOOKALIKES = ("∶", "꞉", "ː")
+_LOOKALIKES: dict[str, str] = {
+    **{c: "/" for c in _SLASH_LOOKALIKES},
+    **{c: ":" for c in _COLON_LOOKALIKES},
+}
+_INVISIBLE_FILLERS = frozenset("ᅟᅠㅤﾠ")
+_URL_TAIL = r"[^\s,;()\[\]{}<>\"']*"
+URL_DETECTION_PATTERN = re.compile(
+    r"[A-Za-z][A-Za-z0-9+.\-]{0,63}://"
+    + _URL_TAIL
+    + r"|(?<![\w/:])//[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9-]+)+"
+    + _URL_TAIL
+    + r"|(?<![\w.@/])[Ww]{3}\.[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*"
+    + _URL_TAIL
+)
+
+
+def fold_for_detection(text: str) -> tuple[str, list[int] | None]:
+    """(folded text, the original index of each folded character; None when the text is ASCII)."""
+    if text.isascii():
+        return text, None
+    out: list[str] = []
+    index: list[int] = []
+    for position, char in enumerate(text):
+        if char in _INVISIBLE_FILLERS or unicodedata.category(char) == "Cf":
+            continue
+        folded = _LOOKALIKES.get(char) or unicodedata.normalize("NFKC", char)
+        out.append(folded)
+        index.extend([position] * len(folded))
+    return "".join(out), index
+
+
+def url_ranges(text: str) -> list[tuple[int, int]]:
+    """The [start, end) ranges, in `text`'s own offsets, of every URL found in its folded view
+    (`URL_DETECTION_PATTERN`); every original character from a match's first to its last, format
+    characters included, is inside a range."""
+    folded, index = fold_for_detection(text)
+    ranges: list[tuple[int, int]] = []
+    for match in URL_DETECTION_PATTERN.finditer(folded):
+        start = match.start() if index is None else index[match.start()]
+        end = match.end() if index is None else index[match.end() - 1] + 1
+        if ranges and start <= ranges[-1][1]:
+            ranges[-1] = (ranges[-1][0], max(ranges[-1][1], end))
+            continue
+        ranges.append((start, end))
+    return ranges
+
+
+def _blank_urls(text: str) -> str:
+    """5.2.2: a web address states no amount ("?id=77", "/series/42", ":8080", an EDGAR accession
+    path), disguised or not. Every URL (`url_ranges`) is blanked, equal length (so offsets and the
+    span cap are unchanged), before any other pass, in claim and span alike. The verbatim-quote
+    check and the judge still read the text as written."""
+    ranges = url_ranges(text)
+    if not ranges:
+        return text
+    chars = list(text)
+    for start, end in ranges:
+        chars[start:end] = " " * (end - start)
+    return "".join(chars)
+
+
 def _normalise(text: str) -> str:
-    text = text[:_MAX_CHARS]
+    text = _blank_urls(text[:_MAX_CHARS])
     # 5.2.1: the equivalent forms first, so claim and span are read the same way.
     text = _SPELLED_AMOUNT.sub(_spelled_decimal, text)
     for pattern, decimal in _FRACTION_WORDS:
@@ -708,7 +790,9 @@ def missing_figures(
     a cited span longer than `span_cap` characters anchors no figure (`_readable`), so a
     whole-document citation cannot anchor a figure by coincidence somewhere in a long filing: a
     claim with figures cites the passage that states them. The verbatim-quote tests still read
-    the whole span (a verbatim quote cannot misstate a figure).
+    the whole span (a verbatim quote cannot misstate a figure). From 5.2.2 the claim check
+    (`scoring.evaluate_claims`) makes a claim citing a span over the cap false before it gets
+    here.
 
     5.2.1: a claim figure is exempt when it equals one of `submitted` re-based by a scale step
     of the span matcher ("$5.9bn" for 5.9), unless the direction the claim writes contradicts

@@ -1,4 +1,4 @@
-"""Opt-in parity over real answers: `check_claim_rules` vs the scorer's own gate, claim by claim.
+"""Opt-in parity over stored test answers: `check_claim_rules` vs the scorer's own gate, claim by claim.
 
 Organizer-side only: the answers and units are not in this repository. Set
 ``T4_RAIL_PARITY_ANSWERS`` to a directory of ``<name>/<unit_id>/answer.json`` (or

@@ -180,4 +180,4 @@ def test_the_scorer_version_is_adopted() -> None:
     # (test_own_value_exemption.py); 5.2.0 = the per-claim faithfulness penalty
     # (test_claim_penalty.py); 5.2.1 = the interval leg capped by the prediction leg
     # (test_interval_cap.py).
-    assert S.SCORER_VERSION == "5.2.1"
+    assert S.SCORER_VERSION == "5.2.2"

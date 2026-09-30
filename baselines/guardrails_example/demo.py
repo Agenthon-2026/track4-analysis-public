@@ -7,7 +7,8 @@ flags both before submission; the one clean claim passes.
 
 It then checks the answer's ``submitted_reasons`` (the field the reasoning
 grader reads): two clean reasons quoting the corpus, and one planted reason
-whose mechanism pastes a URL, which the deny list refuses.
+whose mechanism pastes a URL that carries a deny-list token (`units/`), which the deny list
+refuses (a plain URL is masked, not refused, from scorer 5.2.2).
 
 Usage::
 
@@ -27,6 +28,7 @@ from .citation_rail import (
     CorpusDoc,
     check_answer,
     check_submitted_reasons,
+    reasons_judged,
     filter_retrieved,
     load_corpus,
 )
@@ -130,7 +132,7 @@ def build_reasons(corpus: dict[str, CorpusDoc]) -> list[dict]:
         {  # planted deny-list hit — a URL in the agent's own words
             "reason_id": "r3",
             "premise": "Analysts expect a strong quarter.",
-            "mechanism": "See https://example.com/preview for the consensus preview.",
+            "mechanism": "See https://example.com/units/preview for the consensus preview.",
             "answer_implication": "Supports a beat for AAPL.",
         },
     ]
@@ -178,6 +180,10 @@ def main(argv: list[str] | None = None) -> int:
     print("\nSubmitted-reasons findings:")
     for f in reason_findings:
         print(f"  {f}")
+    print("Reasons the grader would judge (submitted order, skip and continue):")
+    for entry in reasons_judged(answer, corpus, cutoff):
+        state = "judged" if entry["judged"] else f"skipped ({entry['why']})"
+        print(f"  reason#{entry['index']}: {state}")
 
     codes = sorted(f.code for f in findings)
     expected = ["bad_span", "stale_doc"]

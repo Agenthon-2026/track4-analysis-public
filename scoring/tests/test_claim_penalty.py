@@ -66,7 +66,7 @@ PLANTED: dict[str, list[str]] = {
 }
 #: What the penalty must decide for each class, with the reasons it must give.
 EXPECTED: dict[str, tuple[str, ...]] = {
-    "a": (),
+    "a": ("content_free",),
     "b": ("contradicted",),
     "c": (),
     "d": ("unanchored",),
@@ -161,7 +161,8 @@ def test_the_planted_classes_are_penalised_exactly_as_step_one_rules(
     judge = TextJudge(contradicted=tuple(PLANTED["b"]))
     outcome = _score(tmp_path, _unit(tmp_path), _answer({"SYN-A": claims}), judge)
 
-    # Never a refusal: 2 of 7 claims false costs 2/7 of the score at k = 1.
+    # Never a refusal: 6 of 7 claims false (5.2.2: the two content-free claims too) leaves
+    # 1 - 6/(6 + 1) = 1/7 of the score at k = 1.
     assert outcome.state == "participant_success"
     assert outcome.failure_code is None
     got = {c["claim"]: tuple(c["reasons"]) for c in outcome.diagnostics["false_claims"]}
@@ -169,28 +170,30 @@ def test_the_planted_classes_are_penalised_exactly_as_step_one_rules(
         for text in PLANTED[cls]:
             assert got.get(text, ()) == EXPECTED[cls], (cls, text)
     assert outcome.diagnostics["claim_count"] == 7
-    assert outcome.diagnostics["false_claim_count"] == 4
+    assert outcome.diagnostics["false_claim_count"] == 6
     assert outcome.diagnostics["faithfulness_rule"] == FAITHFULNESS_RULE
     factor = outcome.diagnostics["faithfulness_factor"]
-    assert factor == pytest.approx(3 / 7)
+    assert factor == pytest.approx(1 / 7)
     before = outcome.diagnostics["composite_before_penalty"]
     assert before > 0.0
-    assert outcome.score == pytest.approx(before * 3 / 7)
-    # Every judged claim was put to the judge as (the cited passage, the claim's own text).
-    judged = [t for cls in "abc" for t in PLANTED[cls]]
+    assert outcome.score == pytest.approx(before * 1 / 7)
+    # Every judged claim was put to the judge as (the cited passage, the claim's own text); a
+    # content-free claim is not put to it (5.2.2).
+    judged = [t for cls in "bc" for t in PLANTED[cls]]
     assert sorted(h for _, h in judge.calls) == sorted(judged)
     assert {p for p, _ in judge.calls} == {SPAN}
 
 
-def test_content_free_claims_alone_cost_nothing(tmp_path: pathlib.Path) -> None:
-    """The 5.1.x loophole the other way round: content-free text earns nothing here either, but
-    it is not a falsehood, so a unit of nothing else keeps its whole composite."""
-    outcome = _score(
-        tmp_path, _unit(tmp_path), _answer({"SYN-A": PLANTED["a"]}), TextJudge()
-    )
+def test_content_free_claims_are_false(tmp_path: pathlib.Path) -> None:
+    """5.2.2: a content-free claim asserts nothing a passage could
+    support, so it is false and is not put to the judge. A unit of nothing else scores 0."""
+    judge = TextJudge()
+    outcome = _score(tmp_path, _unit(tmp_path), _answer({"SYN-A": PLANTED["a"]}), judge)
     assert outcome.state == "participant_success"
-    assert outcome.diagnostics["false_claim_count"] == 0
-    assert outcome.score == outcome.diagnostics["composite_before_penalty"]
+    assert outcome.diagnostics["false_claim_count"] == 2
+    assert outcome.diagnostics["content_free_claim_count"] == 2
+    assert judge.calls == []
+    assert outcome.score == 0.0
 
 
 # --- wrong-entity citations: partial credit, not a cliff -----------------------------------------
@@ -201,7 +204,7 @@ def test_one_wrong_entity_citation_costs_one_claim_not_the_unit(
     claims are false (wrong entity) and SYN-B's two are neutral: factor 0.5, not 0."""
     labels = {PRE_CUTOFF_DOC: {"entity_ids": ["SYN-B"]}}
     unit = _unit(tmp_path, ("SYN-A", "SYN-B"), labels=labels)
-    true_claims = PLANTED["c"] + PLANTED["a"][:1]
+    true_claims = PLANTED["c"] + ["Synthetic Issuer A reported revenue."]
     answer = _answer({"SYN-A": true_claims, "SYN-B": true_claims})
     outcome = _score(tmp_path, unit, answer, TextJudge())
     assert outcome.state == "participant_success"

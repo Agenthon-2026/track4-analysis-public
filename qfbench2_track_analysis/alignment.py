@@ -35,6 +35,7 @@ from .codes import T4OrganizerFault, T4ParticipantFailure, T4Reason
 
 __all__ = [
     "CLAIM_TEXT_MAX_CHARS",
+    "NESTED_CITATIONS_KEY",
     "TARGET_TYPES",
     "AlignedPredictions",
     "Claim",
@@ -50,6 +51,11 @@ __all__ = [
 #: the judge's time. Over the cap the claim is recorded as malformed and counts as unsupported;
 #: it never reaches the judge and it never refuses the unit by itself.
 CLAIM_TEXT_MAX_CHARS = 4000
+
+#: The claim-level citations list, removed in scorer 5.2.2: a claim cites one span of one
+#: document through its own `doc_id`, `span_start` and `span_end`. A claim that still carries
+#: this key is malformed (false, never put to the judge); the list itself is not read.
+NESTED_CITATIONS_KEY = "citations"
 
 #: Closed. An unknown target type is refused rather than defaulting to classification — the old
 #: fallback meant a card typo silently changed which metric the leaderboard reported.
@@ -154,8 +160,8 @@ class Claim:
     """One participant claim: the sentence asserted (NFC, stripped) and the citations it cites.
 
     `text` is the hypothesis the judge is asked about. `malformed` is
-    set when the text is empty or over `CLAIM_TEXT_MAX_CHARS`: such a claim has no usable
-    hypothesis, counts as unsupported, and is never put to the judge.
+    set when the text is empty or over `CLAIM_TEXT_MAX_CHARS`, or (5.2.2) when the claim carries
+    the removed `citations` list: such a claim counts as false and is never put to the judge.
     """
 
     text: str
@@ -375,26 +381,22 @@ def _citations(
                 f"entity {entity_id} has a non-object claim",
                 invalid_row_count=1,
             )
-        if isinstance(claim.get("citations"), list):
-            # Single-entity ("camp A") shape: the claim carries an explicit citations[].
-            nested = [c for c in claim["citations"] if isinstance(c, Mapping)]
-            if len(nested) != len(claim["citations"]) or not nested:
-                raise T4ParticipantFailure(
-                    T4Reason.CITATION_MALFORMED,
-                    f"entity {entity_id} has a claim whose citations[] is empty or malformed",
-                    invalid_row_count=1,
-                )
-            nested = [_with_int_offsets(c, entity_id) for c in nested]
-            cites.extend(nested)
-            own: tuple[Mapping[str, Any], ...] = tuple(nested)
-        else:
-            # Multi-entity ("camp B") shape: the claim object IS the citation.
-            cite = _with_int_offsets(claim, entity_id)
-            cites.append(cite)
-            own = (cite,)
+        # The claim object IS its citation: `doc_id`, `span_start`, `span_end` (the schema
+        # requires all three). 5.2.2 removed the claim-level `citations` list: a claim that
+        # still carries the key is false (malformed, never put to the judge), the list is not
+        # read, and the claim's own span is checked like every other claim's.
+        cite = _with_int_offsets(claim, entity_id)
+        cites.append(cite)
+        own: tuple[Mapping[str, Any], ...] = (cite,)
         text, malformed = _claim_text(claim)
         texts.append(text)
-        grouped.append(Claim(text=text, citations=own, malformed=malformed))
+        grouped.append(
+            Claim(
+                text=text,
+                citations=own,
+                malformed=malformed or NESTED_CITATIONS_KEY in claim,
+            )
+        )
     if not cites:
         raise T4ParticipantFailure(
             T4Reason.CITATION_MALFORMED,

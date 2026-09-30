@@ -107,6 +107,12 @@ the claim check (`numeric`: a fraction of a point, a number in words, glued suff
 reading dates, index bases and rule numbers as amounts, and makes the own-value exemption
 direction- and scale-aware, float-noise free, and inclusive of the "±" half-width and the unit's
 interval level.
+
+5.2.2 adds three claim rules to `evaluate_claims`: a content-free claim (`content_free`: no figure,
+only function and evidence/meta words) is false and is not put to the judge; a claim citing a span
+over `FIGURE_SPAN_CAP` characters is false; and a span longer than the judge's window is judged on
+the window that shares the most claim words (`best_matching_window`). Numbers inside a web address,
+disguised ones included, are no longer read as figures (`numeric`).
 """
 
 from __future__ import annotations
@@ -116,6 +122,7 @@ import json
 import logging
 import math
 import pathlib
+import re
 import statistics
 import tomllib
 from collections.abc import Callable, Mapping, Sequence
@@ -165,7 +172,7 @@ DOMAIN_MAX = 1.0
 
 #: Bumped whenever the composite, the gates or the evidence semantics change. Recorded in
 #: provenance so a leaderboard can be attributed to an implementation rather than to a repo state.
-SCORER_VERSION = "5.2.1"
+SCORER_VERSION = "5.2.2"
 
 #: Which figures of a claim its cited spans must carry. "every" (the whole cited span) is the
 #: 5.2.0 rule; "any" (the judge window) is the earlier rule. A switch for the measurement.
@@ -174,8 +181,9 @@ FIGURE_RULE = "every"
 #: A cited span longer than this many characters anchors no figure (the published
 #: per-citation cap of the reasoning contract, where a longer citation is refused). A
 #: whole-document citation no longer lets a figure that occurs anywhere in a long filing anchor a
-#: claim by coincidence: a claim with figures cites the passage that states them. A verbatim quote
-#: is still recognised in a span of any length.
+#: claim by coincidence: a claim with figures cites the passage that states them. From 5.2.2 a
+#: claim citing a longer span is false outright (``over_cap`` in `evaluate_claims`), a verbatim
+#: quote included.
 FIGURE_SPAN_CAP = 8000
 
 #: The longest claim the judge reads, in judge tokens. Above it the claim leaves too little
@@ -893,9 +901,84 @@ FALSE_REASONS = (
     "wrong_entity",
     "out_of_range",
     "malformed",
+    "over_cap",
     "unanchored",
+    "content_free",
     "contradicted",
 )
+
+#: 5.2.2: the words a CONTENT-FREE claim is made of. A claim is content-free
+#: when it states no figure and, once the unit's own entity names, ids and tickers are blanked,
+#: every word it has is a function word (`CONTENT_FREE_FUNCTION_WORDS`) or an evidence/meta word
+#: (`CONTENT_FREE_META_WORDS`), AND either nothing but function words is left or it has a filler
+#: anchor (`CONTENT_FREE_FILLER_ANCHORS`): "Pre-cutoff evidence selected for the submitted
+#: prediction.", "Evidence for X from the cited pre-cutoff passage.", or the entity name alone.
+#: Such a claim asserts nothing a passage could support, so it is false and is not put to the
+#: judge. Any other word makes the claim contentful ("Guidance was cut.", "Rates rose.", "Hiring
+#: slowed."), and so does a claim whose meta words are all ordinary finance words with no anchor
+#: ("AAPL has no forecast.", "No quotes were submitted."). The vocabulary was built from filler
+#: templates in stored test answers and measured to flag no correct or contentful claim in them
+#: or in a labelled synthetic set; extend it only with the same measurement.
+CONTENT_FREE_FUNCTION_WORDS = frozenset(
+    """a an the and or of for to in on at by with from as is are was were be been being this that
+    these those it its it's their there here which who what when where while so such not no nor but
+    if into over only also very can could would should will may might must has have had do does did
+    done any all some each""".split()
+)
+CONTENT_FREE_META_WORDS = frozenset(
+    """pre-cutoff cutoff evidence selected submitted prediction predictions cited citing cite
+    document documents relevant passage passages available context contextual only model inference
+    establish establishes placeholder forecast forecasts quote quotes grounded model-entailed
+    top-retrieved retrieved nearest source sources contains wording fallback excerpt used support
+    supports supporting claim claims""".split()
+)
+#: The meta words that mark a claim as filler on their own (organizer review of 5.2.2): words
+#: about the evidence, the retrieval or the citation. The other meta words (forecast, quote,
+#: submitted, available, support, ...) are ordinary finance words too, so a claim made only of
+#: them and function words is contentful.
+CONTENT_FREE_FILLER_ANCHORS = frozenset(
+    """evidence passage passages excerpt pre-cutoff cutoff cite cited citing retrieved
+    top-retrieved nearest placeholder fallback inference context contextual wording document
+    documents source sources model-entailed""".split()
+)
+
+
+#: A retrieval notice blanked before the words are read.
+_CONTENT_FREE_NOTICE = re.compile(r"\bmodel inference failed\b", re.IGNORECASE)
+#: Anything that makes a claim contentful however few words it has: a letter outside a-z (a
+#: sentence in another script), an arrow ("X ↑"), or a digit (a figure, including one equal to the
+#: participant's own value, which the figure check exempts but which still states something).
+_CONTENT_FREE_CONTENT = re.compile(
+    r"[^\W\d_a-zA-Z]|[\u2190-\u21ff\u27f0-\u27ff\u2b00-\u2bff\u25b2\u25bc]|\d"
+)
+
+
+def content_free(claim_text: str, *, figure_status: str, names: Sequence[str]) -> bool:
+    """Is the claim content-free? It must state no figure (`figure_status` "no_figures"); the
+    unit's entity names, ids and tickers in `names` are blanked first, so "Evidence for Synthetic
+    Issuer A." is content-free too. Every word left must be a function or meta word
+    (`CONTENT_FREE_META_WORDS`), and either no word but function words is left or one of them is a
+    filler anchor (`CONTENT_FREE_FILLER_ANCHORS`). A letter outside a-z, an arrow or a digit left
+    after blanking makes the claim contentful (`_CONTENT_FREE_CONTENT`), and so does "failed"
+    outside the notice "model inference failed"."""
+    if figure_status != "no_figures":
+        return False
+    text = claim_text
+    for name in sorted(
+        (n.strip() for n in names if n and n.strip()), key=len, reverse=True
+    ):
+        text = re.sub(
+            r"(?<![\w])" + re.escape(name) + r"(?![\w])", " ", text, flags=re.IGNORECASE
+        )
+    # "Model inference failed" is a retrieval notice; "failed" alone is an event ("X failed.")
+    text = _CONTENT_FREE_NOTICE.sub(" ", text)
+    if _CONTENT_FREE_CONTENT.search(text):
+        return False
+    words = [w.strip("-'") for w in re.findall(r"[a-z][a-z\-']*", text.lower())]
+    rest = [w for w in words if w and w not in CONTENT_FREE_FUNCTION_WORDS]
+    if not all(w in CONTENT_FREE_META_WORDS for w in rest):
+        return False
+    return not rest or any(w in CONTENT_FREE_FILLER_ANCHORS for w in rest)
 
 
 @dataclass(frozen=True, slots=True)
@@ -903,8 +986,10 @@ class ClaimVerdict:
     """One claim's outcome (5.2.0: a penalty verdict, never an admission vote).
 
     `status` is the figure/NLI stage: ``malformed`` (no usable claim text; nothing else is
-    checked), ``unanchored`` (the claim states figures and none of them appears in any passage
-    the judge reads of its citations; the judge is not asked), ``contradicted`` (the ensemble's
+    checked), ``over_cap`` (5.2.2: a citation spans more than `FIGURE_SPAN_CAP` characters, the
+    published cap; nothing else is checked), ``unanchored`` (the claim states figures and none of
+    them appears in any passage the judge reads of its citations; the judge is not asked),
+    ``content_free`` (5.2.2: `content_free`; the judge is not asked), ``contradicted`` (the ensemble's
     three-way P(contradiction) for some judged passage exceeds the unit's `contradiction_bar`),
     or ``neutral`` (anything else: no credit, no penalty). `score` is that best
     P(contradiction), 0.0 whenever the judge was not asked. `wrong_entity` and `out_of_range`
@@ -932,7 +1017,13 @@ class ClaimVerdict:
             out.append("wrong_entity")
         if self.out_of_range:
             out.append("out_of_range")
-        if self.status in ("malformed", "unanchored", "contradicted"):
+        if self.status in (
+            "malformed",
+            "over_cap",
+            "unanchored",
+            "content_free",
+            "contradicted",
+        ):
             out.append(self.status)
         return tuple(out)
 
@@ -1008,9 +1099,9 @@ class ClaimReport:
         ``1/(F + 3E)`` of the unit.
 
         `judge_verdicts=False` counts only the deterministic reasons (wrong entity, out of range,
-        malformed, unanchored) and ignores ``contradicted``: the smoke path, whose lexical judge
-        is not on the production scale, still charges what organizer data and exact code decide.
-        T is then the claims that path does not count false.
+        malformed, over cap, unanchored, content-free) and ignores ``contradicted``: the smoke
+        path, whose lexical judge is not on the production scale, still charges what organizer
+        data and exact code decide. T is then the claims that path does not count false.
         """
         if (
             isinstance(entity_count, bool)
@@ -1063,6 +1154,12 @@ class ClaimReport:
             "claim_count": self.claim_count,
             "false_claim_count": self.false_count,
             "unanchored_claim_count": self.unanchored_count,
+            "over_cap_claim_count": sum(
+                1 for v in self.verdicts if v.status == "over_cap"
+            ),
+            "content_free_claim_count": sum(
+                1 for v in self.verdicts if v.status == "content_free"
+            ),
             "malformed_claim_count": self.malformed_count,
             "contradicted_claim_count": self.contradicted_count,
             "wrong_entity_claim_count": self.wrong_entity_claim_count,
@@ -1233,6 +1330,74 @@ def contradiction_supported(judge: Any) -> bool:
     )
 
 
+#: 5.2.2: the words that do not count when a claim is matched to a window
+#: of its cited span (`best_matching_window`): function words and generic evidence words.
+WINDOW_STOPWORDS = frozenset(
+    """a an the and or of for to in on at by with from as is are was were be been being this that
+    these those it its it's their there here which who whom what when where while than then so such
+    not no nor but if into over under about above below between after before during per via each
+    every any all some more most less least other same own only also very can could would should
+    will may might must has have had do does did done selected submitted prediction predictions
+    evidence pre-cutoff cutoff cited document documents source sources relevant supports support
+    supported forecast forecasts forecasting based used using use model models data observed
+    assumption assumptions context original unreviewed quote quotes grounded entailed claim claims
+    reason reasons analysis passage passages text information shows show shown indicates indicate
+    suggests suggest""".split()
+)
+_WINDOW_BOUNDARY = re.compile(r"(?<=\n)|(?<=[.;]\s)")
+
+
+def _window_words(text: str) -> set[str]:
+    return {
+        t
+        for t in (
+            w.strip(".-") for w in re.findall(r"[a-z0-9][a-z0-9.\-]*", text.lower())
+        )
+        if len(t) >= 2 and t not in WINDOW_STOPWORDS
+    }
+
+
+def best_matching_window(
+    judge: Any, whole: str, cut: str, claim_text: str, *, require_window: bool
+) -> str:
+    """5.2.2: the judge-sized window of a cited span that the claim is
+    judged on. `cut` is the judge's own window (`judged_passage`) of `whole`; when it is the whole
+    span, it is returned. Otherwise, with L = len(cut), the candidate windows start at 0 and then at
+    the first line or sentence boundary at least L/2 characters after the previous start. Each
+    window whole[start:start + L] is scored by the number of distinct claim words it contains
+    (`WINDOW_STOPWORDS` excluded); the most wins and a tie goes to the earliest, so the first window
+    (the one read before 5.2.2) is kept unless another shares strictly more. The judged text is the
+    judge's own window cut from the winning start. A contradiction deep in a long passage is then
+    read instead of the passage's opening."""
+    if cut == whole:
+        return cut
+    length = max(len(cut), 1)
+    want = _window_words(claim_text)
+    starts = [0]
+    while True:
+        nxt = starts[-1] + max(length // 2, 1)
+        if nxt >= len(whole):
+            break
+        m = _WINDOW_BOUNDARY.search(whole, nxt)
+        start = m.start() if m else nxt
+        if start >= len(whole) or start <= starts[-1]:
+            break
+        starts.append(start)
+    best_start, best_overlap = 0, -1
+    for start in starts:
+        overlap = len(want & _window_words(whole[start : start + length]))
+        if overlap > best_overlap:
+            best_start, best_overlap = start, overlap
+    if best_start == 0:
+        return cut
+    rest = whole[best_start:]
+    piece = rest[: 3 * length]
+    window = judged_passage(judge, piece, claim_text, require_window=require_window)
+    if window == piece and len(piece) < len(rest):
+        window = judged_passage(judge, rest, claim_text, require_window=require_window)
+    return window
+
+
 def judged_contradiction(
     judge: Any, premise: str, hypothesis: str, *, require_window: bool = False
 ) -> float:
@@ -1296,7 +1461,8 @@ def evaluate_claims(
     entity_names: Sequence[str] = (),
     interval_level: float | None = None,
 ) -> ClaimReport:
-    """The per-claim faithfulness verdicts (5.2.0): which claims are demonstrably false.
+    """The per-claim faithfulness verdicts (5.2.0; 5.2.2 adds ``over_cap`` and ``content_free``):
+    which claims are demonstrably false.
 
     Per claim, in roster order:
 
@@ -1305,21 +1471,25 @@ def evaluate_claims(
        admitted, for callers that ran no entity check). ``out_of_range``: a citation's offsets
        are not a real slice of its document (the offsets guard, `_span_text`); the claim is still read on its
        other citations.
-    2. A claim with no usable text (empty, or over `CLAIM_TEXT_MAX_CHARS`) is ``malformed``.
+    2. A claim with no usable text (empty, or over `CLAIM_TEXT_MAX_CHARS`) is ``malformed``;
+       from 5.2.2 a claim citing a span over `FIGURE_SPAN_CAP` characters is ``over_cap``.
     3. The numeric backstop (`numeric.claim_number_status`, unchanged in 5.2.0): a claim whose
        figures appear in none of the passages it cites is ``unanchored``. The participant's own
        SCORED values for the entity (`_scored_own_values`) are not figures the passage is
-       expected to carry.
+       expected to carry. From 5.2.2 a claim with no figure made only of function and
+       evidence/meta words (`content_free`) is ``content_free`` and is not put to the judge.
     4. Otherwise the judge is asked, with each cited passage as premise and the claim text as
-       hypothesis, for its three-way P(contradiction) (`judged_contradiction`); the best over
+       hypothesis, for its three-way P(contradiction) (`judged_contradiction`), a passage longer
+       than the judge's window read on its best-matching window (`best_matching_window`, 5.2.2);
+       the best over
        the claim's passages above `contradiction_bar` makes it ``contradicted``, anything else
        is ``neutral``.
 
     A cited passage is what the judge reads of it: every passage is cut to the judge's window
     before either check reads it (the judged-window guard, `judged_passage`). A claim is FALSE if 1 finds anything or
-    its status is malformed, unanchored or contradicted. Generic or content-free text is neither
-    entailed nor contradicted, so it is neutral: it earns nothing here and costs nothing; whether
-    evidence supports the forecast is reasoning grading's question.
+    its status is malformed, over_cap, unanchored, content_free or contradicted. Generic text the
+    passage neither confirms nor denies is neutral: it earns nothing here and costs nothing;
+    whether evidence supports the forecast is reasoning grading's question.
     """
     applied = contradiction_supported(judge)
     if not applied and require_window:
@@ -1383,6 +1553,13 @@ def evaluate_claims(
                 )
             else:
                 status = claim_number_status(claim.text, spans, submitted=submitted)
+            if any(len(span) > FIGURE_SPAN_CAP for span in whole):
+                # 5.2.2: a citation over the published 8,000-character
+                # cap is false, whatever the claim states: cite the passage, not the document.
+                verdicts.append(
+                    ClaimVerdict(entity_id, claim.text, "over_cap", 0.0, wrong, bad > 0)
+                )
+                continue
             if status == "unanchored":
                 verdicts.append(
                     ClaimVerdict(
@@ -1390,15 +1567,33 @@ def evaluate_claims(
                     )
                 )
                 continue
+            if content_free(
+                claim.text, figure_status=status, names=(*entity_names, entity_id)
+            ):
+                # 5.2.2: filler asserts nothing; it is false and is not
+                # put to the judge.
+                verdicts.append(
+                    ClaimVerdict(
+                        entity_id, claim.text, "content_free", 0.0, wrong, bad > 0
+                    )
+                )
+                continue
             best = 0.0
             if verbatim_quote(claim.text, whole):
                 # A word-for-word quote of a passage it cites states what that
-                # passage states; the judge is not asked (measured: participant verbatim quotes
-                # reach P(contradiction) 0.883 on long table quotes, the closest class to the bar).
+                # passage states; the judge is not asked (measured: verbatim quotes in stored
+                # test answers reach P(contradiction) 0.883 on long table quotes, the closest class to the bar).
                 spans = []
-            for premise in spans if applied else ():
+            for full, premise in (
+                zip(whole, spans, strict=True) if applied and spans else ()
+            ):
                 if not premise.strip() or not claim.text.strip():
                     continue
+                # 5.2.2: a span longer than the judge's window is judged on the window that
+                # shares the most claim words (the first window on a tie).
+                premise = best_matching_window(
+                    judge, full, premise, claim.text, require_window=require_window
+                )
                 best = max(
                     best,
                     judged_contradiction(

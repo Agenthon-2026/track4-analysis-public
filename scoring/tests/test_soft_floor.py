@@ -4,7 +4,7 @@
 
 F = false claims, T = every other claim (N - F), E = the roster's entity count; no claims -> 1.
 Each false claim costs a share of the unit; other claims beyond 3 x E in total do not dilute that cost; a
-unit with no false claims is not penalised; content-free (neutral) claims neither earn nor cost
+unit with no false claims is not penalised; neutral claims neither earn nor cost
 beyond that cap. The reviewer's properties (padding-review/REVIEW.md, soft-floor addendum) are
 asserted here on an exhaustive small grid.
 """

@@ -29,8 +29,8 @@ _TARGET_INSTRUCTIONS = {
         '"label" may be null.'
     ),
     "ranking": (
-        'Set "rank" to this entity\'s predicted rank (1 = highest). '
-        '"point_forecast" is the predicted metric value.'
+        'Set "point_forecast" to the predicted metric value; entities are ranked by it. '
+        '"label" may be null.'
     ),
 }
 
@@ -63,7 +63,6 @@ def build_user_prompt(
     schema = {
         "label": "string or null",
         "point_forecast": "number or null",
-        "rank": "integer, ranking tasks only",
         "interval": {
             "level": interval_level,
             "lo": "number",

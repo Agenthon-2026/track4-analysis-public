@@ -19,8 +19,8 @@ of the analysis scorer on a whole answer, with the scorer's own code (it imports
 ``qfbench2_track_analysis``): wrong-entity citations, out-of-range offsets,
 malformed claims (empty, too long, over the judge-token cap when a tokenizer is
 available) and the every-figure rule (whole cited span, verbatim-quote pass,
-the unit's own names and tickers exempt, a span over 8,000 characters anchors
-no figure). Only the NLI contradiction check is left out.
+the unit's own names and tickers exempt), a citation over 8,000 characters and a
+content-free claim (both false from scorer 5.2.2). Only the NLI contradiction check is left out.
 
 A third check, :func:`check_submitted_reasons`, covers the optional top-level
 ``submitted_reasons`` field that the reasoning grader reads: its shape, its
@@ -62,9 +62,10 @@ class RailFinding:
     entity_id: str
     claim_index: int
     # check_answer: unknown_doc | stale_doc | missing_field | bad_span | empty_claim |
-    #   task_row | task_unchecked
+    #   task_row | task_unchecked | claim_citations
     # check_claim_rules: claim_wrong_entity | claim_out_of_range | claim_malformed |
-    #   claim_unanchored | claim_tokens_unchecked | unit_refused
+    #   claim_unanchored | claim_over_cap | claim_content_free |
+    #   claim_tokens_unchecked | unit_refused
     # check_submitted_reasons: reasons_shape | reason_citation | cap_citation_chars |
     #   cap_answer_bytes | cap_reason_bytes | cap_evidence_bytes | deny_list | duplicate_reason
     code: str
@@ -125,6 +126,16 @@ def filter_retrieved(
 TASK_DOC_ID = "task"
 
 
+#: The claim-level citations list, removed in scorer 5.2.2 (a claim cites one span of one
+#: document through its own doc_id, span_start and span_end).
+NESTED_CITATIONS_KEY = "citations"
+_CITATIONS_TEXT = (
+    "carries a claim-level `citations` list, a shape removed in scorer 5.2.2: the scorer does "
+    "not read the list, counts the claim as false (malformed) and never puts it to the judge; "
+    "cite one span per claim with the claim's own doc_id, span_start and span_end"
+)
+
+
 def check_answer(
     answer: dict, corpus: dict[str, CorpusDoc], cutoff_date: str, *, task: dict | None = None
 ) -> list[RailFinding]:
@@ -139,6 +150,8 @@ def check_answer(
     for entity in answer.get("entity_predictions", []):
         entity_id = str(entity.get("entity_id", "?"))
         for i, claim in enumerate(entity.get("claims", [])):
+            if isinstance(claim, dict) and NESTED_CITATIONS_KEY in claim:
+                findings.append(RailFinding(entity_id, i, "claim_citations", _CITATIONS_TEXT))
             if isinstance(claim, dict) and claim.get("doc_id") == TASK_DOC_ID and task is not None:
                 if table is None:
                     table = _task_table(task)
@@ -240,7 +253,11 @@ def _check_claim(
 # submitted_reasons: the field the reasoning grader reads                      #
 # --------------------------------------------------------------------------- #
 
-#: Published caps. Over any of them, the unit's reasoning is not judged and scores 0.
+#: Published caps (scorer 5.2.2). Reasons are checked in the order they are
+#: submitted: a reason is judged only if every citation in it is at most MAX_CITATION_CHARS and,
+#: together with the reasons already judged, the reasons stay within MAX_REASON_BYTES and their
+#: cited evidence within MAX_EVIDENCE_BYTES. A reason that does not fit is not judged and scores
+#: 0; later reasons are still checked. MAX_ANSWER_BYTES applies to the whole unit.
 MAX_REASONS = 3
 MAX_CITATION_CHARS = 8_000
 #: Per-unit caps in UTF-8 bytes of the compact JSON the judge reads (the grader's measure).
@@ -250,11 +267,13 @@ MAX_REASON_BYTES = 6_500
 MAX_EVIDENCE_BYTES = 46_500
 MAX_JUDGE_BYTES = MAX_ANSWER_BYTES + MAX_REASON_BYTES + MAX_EVIDENCE_BYTES  # 56,000
 
-#: Published deny list (case-insensitive substrings of participant-written text).
+#: Published deny list (case-insensitive substrings of participant-written text). From scorer
+#: 5.2.2 "://" is not on it: URLs in reasons are masked (`mask_reason_uris`), not refused. The
+#: list still runs on the text as written, so a URL that carries a listed token is refused, and
+#: so is a "://" left over after masking (one with no scheme letters before it).
 DENY_LIST = (
     "leaderboard",
     "canary",
-    "://",
     "/home/",
     "units/",
     "reference/",
@@ -301,17 +320,67 @@ def _compact_bytes(items: list) -> int:
     return len(text.encode("utf-8")) - 2  # the list's own brackets
 
 
-#: A URI as the grader masks it: a scheme, "://", and everything up to whitespace or closing
-#: punctuation.
-_URI = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://[^\s,;()\[\]{}<>\"']*")
+#: A URL in a reason field, as the reasoning grader finds it (scorer 5.2.2): a scheme URL, a scheme-less "//host.tld" or a "www." host, matched in a
+#: FOLDED view of the text (`fold_for_detection`): each character NFKC-normalised, the slash and
+#: colon look-alikes NFKC keeps apart read as "/" and ":", and format characters (Unicode Cf) and
+#: Hangul fillers removed. The same detection is `qfbench2_track_analysis.numeric`'s (a test keeps
+#: the two equal); this module stays standard library only.
+_SLASH_LOOKALIKES = ("\u2044", "\u2215", "\u29f8", "\u2571", "\u27cb", "\u3033", "\u1735", "\u2cfa",
+                     "\ufe68", "\u2e4a", "\u0338")
+_COLON_LOOKALIKES = ("\u2236", "\ua789", "\u02d0")
+_LOOKALIKES = {**{c: "/" for c in _SLASH_LOOKALIKES}, **{c: ":" for c in _COLON_LOOKALIKES}}
+_INVISIBLE_FILLERS = frozenset("\u115f\u1160\u3164\uffa0")
+_URL_TAIL = r"[^\s,;()\[\]{}<>\"']*"
+_URI = re.compile(
+    r"[A-Za-z][A-Za-z0-9+.\-]{0,63}://" + _URL_TAIL
+    + r"|(?<![\w/:])//[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9-]+)+" + _URL_TAIL
+    + r"|(?<![\w.@/])[Ww]{3}\.[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*" + _URL_TAIL
+)
 #: The grader's premise filler: one "#" per masked character.
 PREMISE_URI_FILLER = "#"
+
+
+def fold_for_detection(text: str) -> tuple[str, list[int] | None]:
+    """(folded text, the original index of each folded character; None when the text is ASCII)."""
+    if text.isascii():
+        return text, None
+    out: list[str] = []
+    index: list[int] = []
+    for position, char in enumerate(text):
+        if char in _INVISIBLE_FILLERS or unicodedata.category(char) == "Cf":
+            continue
+        folded = _LOOKALIKES.get(char) or unicodedata.normalize("NFKC", char)
+        out.append(folded)
+        index.extend([position] * len(folded))
+    return "".join(out), index
 #: A premise is a quote only with at least this many words once its URLs are masked.
 MIN_PREMISE_QUOTE_WORDS = 3
 
 
 def _mask_premise_uris(text: str) -> str:
-    return _URI.sub(lambda m: PREMISE_URI_FILLER * (m.end() - m.start()), text)
+    """`text` with every character of every URL found in its folded view replaced by "#": from the
+    first to the last original character of each match, format characters included."""
+    folded, index = fold_for_detection(text)
+    ranges: list[list[int]] = []
+    for match in _URI.finditer(folded):
+        start = match.start() if index is None else index[match.start()]
+        end = match.end() if index is None else index[match.end() - 1] + 1
+        if ranges and start <= ranges[-1][1]:
+            ranges[-1][1] = max(ranges[-1][1], end)
+            continue
+        ranges.append([start, end])
+    if not ranges:
+        return text
+    chars = list(text)
+    for start, end in ranges:
+        chars[start:end] = PREMISE_URI_FILLER * (end - start)
+    return "".join(chars)
+
+
+def mask_reason_uris(text: str) -> str:
+    """A reason field as the grader sends it: every URL replaced, equal length, by "#" (1 byte
+    per character, so a masked reason is never larger than the reason as submitted)."""
+    return _mask_premise_uris(text)
 
 
 def premise_is_corpus_quote(premise: str, masked_corpus_texts: list[str]) -> bool:
@@ -328,6 +397,14 @@ def premise_is_corpus_quote(premise: str, masked_corpus_texts: list[str]) -> boo
 def check_submitted_reasons(
     answer: dict, corpus: dict[str, CorpusDoc], cutoff_date: str
 ) -> list[RailFinding]:
+    """Check the optional top-level ``submitted_reasons`` field; return every finding
+    (`_check_reasons` documents the codes). `reasons_judged` gives the per-reason plan."""
+    return _check_reasons(answer, corpus, cutoff_date)[0]
+
+
+def _check_reasons(
+    answer: dict, corpus: dict[str, CorpusDoc], cutoff_date: str
+) -> tuple[list[RailFinding], list[dict]]:
     """Check the optional top-level ``submitted_reasons`` field; return every finding.
 
     An absent field is clean (no reasons are submitted and none are judged). Findings use
@@ -343,14 +420,16 @@ def check_submitted_reasons(
     - ``reason_citation`` -- a citation does not resolve in the frozen corpus (unknown
       document, empty or out-of-range span) or its document is dated after the cutoff. The
       judge never sees that passage; the rest of the reason is still judged.
-    - ``cap_citation_chars`` (one citation > 8,000 characters), and three caps counted in
-      UTF-8 bytes of the compact JSON the judge reads: ``cap_answer_bytes`` (your per-entity
-      answer > 3,000), ``cap_reason_bytes`` (your reasons: id, premise, mechanism,
-      answer_implication > 6,500), ``cap_evidence_bytes`` (the resolved cited passages with
-      their doc id and offsets > 46,500) -- the unit's reasoning is not judged and scores 0.
-      Nothing is clipped. The three sum to the grader's 56,000-byte limit.
-    - ``deny_list`` -- a deny-list phrase in ``mechanism`` or ``answer_implication``, or in a
-      ``premise`` that is not a verbatim corpus quote (`premise_is_corpus_quote`: at least 3
+    - Caps, checked reason by reason in submitted order (scorer 5.2.2): ``cap_citation_chars``
+      (a citation in this reason > 8,000 characters), ``cap_reason_bytes`` (this reason with
+      the reasons judged before it > 6,500 UTF-8 bytes of compact JSON: id, premise, mechanism,
+      answer_implication, URLs masked by "#") and ``cap_evidence_bytes`` (their resolved cited
+      passages > 46,500 bytes). That reason is not judged and scores 0; later reasons are still
+      checked. ``cap_answer_bytes`` (your per-entity answer > 3,000) stops the whole unit's
+      reasoning. Nothing is clipped. The three byte caps sum to the grader's 56,000-byte limit.
+    - ``deny_list`` -- a deny-list phrase (on the text as written, URLs included, or a "://"
+      left after masking) in ``mechanism`` or ``answer_implication``, or in a ``premise`` that is
+      not a verbatim corpus quote (`premise_is_corpus_quote`: at least 3
       words once URLs are masked, and, URLs masked on both sides, a substring of one corpus
       document). The grader refuses that unit's reasoning, which scores 0; the analysis score is
       unaffected.
@@ -368,7 +447,7 @@ def check_submitted_reasons(
     Advisory, like the rest of this module: the organiser-side grader is the authority.
     """
     if _REASONS_ENTITY not in answer:
-        return []
+        return [], []
     findings: list[RailFinding] = []
 
     def flag(index: int, code: str, message: str) -> None:
@@ -377,7 +456,7 @@ def check_submitted_reasons(
     reasons = answer[_REASONS_ENTITY]
     if not isinstance(reasons, list):
         flag(-1, "reasons_shape", f"submitted_reasons must be a list (got {type(reasons).__name__})")
-        return findings
+        return findings, []
     if not 1 <= len(reasons) <= MAX_REASONS:
         flag(
             -1,
@@ -388,13 +467,17 @@ def check_submitted_reasons(
 
     quotable = [_mask_premise_uris(doc.text) for doc in corpus.values()]
     projected_reasons: list[dict] = []
-    trusted: list[dict] = []
+    reason_trusted: list[list[dict]] = []
+    reason_over_cap: list[bool] = []
+    reason_duplicate: list[bool] = []
+    reason_index: list[int] = []
     seen_content: dict[str, int] = {}
 
     for i, reason in enumerate(reasons):
         if not isinstance(reason, dict):
             flag(i, "reasons_shape", "a reason must be an object")
             continue
+        reason_duplicate_now = False
         missing = [k for k in _REASON_REQUIRED if k not in reason]
         if missing:
             flag(i, "reasons_shape", f"reason is missing field(s): {', '.join(missing)}")
@@ -404,6 +487,7 @@ def check_submitted_reasons(
         if all(isinstance(reason.get(k), str) for k in _REASON_TEXT_FIELDS):
             key = "\x1f".join(_duplicate_key(reason[k]) for k in _REASON_TEXT_FIELDS)
             if key in seen_content:
+                reason_duplicate_now = True
                 flag(
                     i,
                     "duplicate_reason",
@@ -415,8 +499,16 @@ def check_submitted_reasons(
                 seen_content[key] = i
 
         projected = {k: reason[k] for k in _REASON_REQUIRED if isinstance(reason.get(k), str)}
-        # the grader renumbers reasons r1, r2, r3 before the judge reads them
-        projected_reasons.append({**projected, "reason_id": f"r{i + 1}"})
+        # the grader renumbers reasons r1, r2, r3 before the judge reads them, and measures the
+        # text with every URL masked by the 1-byte "#" filler
+        sent = {
+            k: (mask_reason_uris(v) if k in _REASON_TEXT_FIELDS else v)
+            for k, v in projected.items()
+        }
+        projected_reasons.append({**sent, "reason_id": f"r{i + 1}"})
+        reason_trusted.append([])
+        reason_over_cap.append(False)
+        reason_duplicate.append(False)
 
         # Deny list: mechanism and answer_implication always; the premise unless it is a
         # whole verbatim quote of a corpus document.
@@ -427,13 +519,19 @@ def check_submitted_reasons(
                 continue
             if field == "premise" and premise_is_corpus_quote(premise, quotable):
                 continue
-            hits = [p for p in DENY_LIST if p in value.lower()]
+            # the grader scans the folded view, so a disguised phrase ("u\u200bnits/") is refused
+            hits = [p for p in DENY_LIST if p in fold_for_detection(value)[0].lower()]
+            if "://" in fold_for_detection(mask_reason_uris(value))[0]:
+                hits.append("://")  # a "://" the URL detection does not mask
             if hits:
                 flag(
                     i,
                     "deny_list",
                     f"{field} contains deny-list phrase(s) {hits}; the grader refuses the unit",
                 )
+
+        reason_index.append(i)
+        reason_duplicate[-1] = reason_duplicate_now
 
         if "scope" in reason:
             scope = reason["scope"]
@@ -472,11 +570,12 @@ def check_submitted_reasons(
 
             length = end - start
             if length > MAX_CITATION_CHARS:
+                reason_over_cap[-1] = True
                 flag(
                     i,
                     "cap_citation_chars",
                     f"{where} spans {length:,} characters (cap {MAX_CITATION_CHARS:,}); "
-                    "cite the passage, not the document",
+                    "this reason is not judged and scores 0; cite the passage, not the document",
                 )
 
             if cit["doc_id"] == TASK_DOC_ID:
@@ -509,7 +608,7 @@ def check_submitted_reasons(
                     f"length {len(doc.text)}",
                 )
                 continue
-            trusted.append(
+            reason_trusted[-1].append(
                 {
                     "doc_id": doc.doc_id,
                     "span_start": start,
@@ -525,26 +624,82 @@ def check_submitted_reasons(
             entity_answer.append(
                 {"entity_id": row.get("entity_id"), **{k: row[k] for k in _ANSWER_FIELDS if k in row}}
             )
-    parts = (
-        ("cap_answer_bytes", "your per-entity answer", entity_answer, MAX_ANSWER_BYTES),
-        ("cap_reason_bytes", "your reasons (id, premise, mechanism, answer_implication)",
-         projected_reasons, MAX_REASON_BYTES),
-        ("cap_evidence_bytes", "the cited passages the judge reads (with doc id and offsets)",
-         trusted, MAX_EVIDENCE_BYTES),
+    try:
+        answer_size = _compact_bytes(entity_answer)
+    except (TypeError, ValueError):
+        answer_size = 0  # not JSON-serialisable: the schema findings above already say why
+    if answer_size > MAX_ANSWER_BYTES:
+        flag(
+            -1,
+            "cap_answer_bytes",
+            f"your per-entity answer comes to {answer_size:,} UTF-8 bytes as compact JSON (cap "
+            f"{MAX_ANSWER_BYTES:,} per unit); the unit's reasoning is not judged and scores 0",
+        )
+    plan = _judged_plan(
+        projected_reasons, reason_trusted, reason_over_cap, reason_duplicate, reason_index
     )
-    for code, what, items, cap in parts:
+    for entry in plan:
+        if entry["judged"] or entry["why"] in ("cap_citation_chars", "duplicate_reason"):
+            continue  # judged, or already reported above
+        flag(entry["index"], entry["why"], entry["message"])
+    return findings, plan
+
+
+def _judged_plan(
+    projected: list[dict],
+    trusted: list[list[dict]],
+    over_cap: list[bool],
+    duplicate: list[bool],
+    index: list[int],
+) -> list[dict]:
+    """Which reasons the grader judges, in submitted order (skip and continue)."""
+    plan: list[dict] = []
+    judged_reasons: list[dict] = []
+    judged_evidence: list[dict] = []
+    for k, reason in enumerate(projected):
+        entry: dict = {"index": index[k], "reason_id": reason.get("reason_id"), "judged": False}
         try:
-            size = _compact_bytes(items)
+            reason_bytes = _compact_bytes(judged_reasons + [reason])
+            evidence_bytes = _compact_bytes(judged_evidence + trusted[k])
         except (TypeError, ValueError):
-            continue  # not JSON-serialisable: the schema findings above already say why
-        if size > cap:
-            flag(
-                -1,
-                code,
-                f"{what} come to {size:,} UTF-8 bytes as compact JSON (cap {cap:,} per unit); "
-                "escaped characters, multi-byte characters and each citation's JSON count",
+            entry.update(why="reasons_shape", message="not JSON-serialisable")
+            plan.append(entry)
+            continue
+        entry.update(reason_bytes=reason_bytes, evidence_bytes=evidence_bytes)
+        if duplicate[k]:
+            entry.update(why="duplicate_reason", message="a content duplicate of an earlier reason")
+        elif over_cap[k]:
+            entry.update(why="cap_citation_chars", message="a citation spans over 8,000 characters")
+        elif reason_bytes > MAX_REASON_BYTES:
+            entry.update(
+                why="cap_reason_bytes",
+                message=f"with the reasons judged before it, the reasons come to {reason_bytes:,} "
+                f"UTF-8 bytes (cap {MAX_REASON_BYTES:,}); this reason is not judged and scores 0, "
+                "later reasons are still checked",
             )
-    return findings
+        elif evidence_bytes > MAX_EVIDENCE_BYTES:
+            entry.update(
+                why="cap_evidence_bytes",
+                message=f"with the reasons judged before it, the cited evidence comes to "
+                f"{evidence_bytes:,} UTF-8 bytes (cap {MAX_EVIDENCE_BYTES:,}); this reason is not "
+                "judged and scores 0, later reasons are still checked",
+            )
+        else:
+            entry.update(judged=True, why="", message="judged")
+            judged_reasons.append(reason)
+            judged_evidence.extend(trusted[k])
+        plan.append(entry)
+    return plan
+
+
+def reasons_judged(answer: dict, corpus: dict[str, CorpusDoc], cutoff_date: str) -> list[dict]:
+    """The grader's plan for `answer`'s ``submitted_reasons``, one entry per reason in submitted
+    order: ``index``, ``judged`` (True or False), ``why`` (the finding code that stops it, or ""),
+    ``message``, and the cumulative ``reason_bytes`` / ``evidence_bytes`` measured with it. Run it
+    before you write answer.json and put your strongest reason first. Advisory; the grader decides.
+    A deny-list hit or an answer over the 3,000-byte cap stops the whole unit's reasoning; see
+    `check_submitted_reasons` for those."""
+    return _check_reasons(answer, corpus, cutoff_date)[1]
 
 
 # --------------------------------------------------------------------------- #
@@ -613,7 +768,7 @@ def judge_token_counter() -> TokenCounter | None:
 def check_claim_rules(
     answer: dict, unit_dir: str | Path, *, token_counter: TokenCounter | str | None = "auto"
 ) -> list[RailFinding]:
-    """The analysis scorer's deterministic 5.2.0 claim verdicts for ``answer``, by the scorer's
+    """The analysis scorer's deterministic claim verdicts (scorer 5.2.2) for ``answer``, by the scorer's
     own code (`qfbench2_track_analysis.scoring.evaluate_claims` over the unit as `hydrate` reads
     it), so this check and the scorer cannot disagree. Only the NLI contradiction check is left
     out. Findings, one per false reason of a claim:
@@ -622,10 +777,16 @@ def check_claim_rules(
       the claim's entity (nor mark shared), or a ``"task"`` span outside the entity's own row;
     - ``claim_out_of_range`` -- offsets that are not a slice of the cited document;
     - ``claim_malformed`` -- empty, over 4,000 characters, or over 400 judge tokens;
+      from scorer 5.2.2 also a claim carrying a claim-level ``citations`` list, a removed shape
+      (the scorer does not read the list; the finding's message says so);
+    - ``claim_over_cap`` -- a citation spans more than 8,000 characters (false whatever the
+      claim states, a verbatim quote included);
     - ``claim_unanchored`` -- a figure no cited span carries (the every-figure rule: whole
-      span; a word-for-word quote of a cited span passes at any span length; the unit's own
-      entity names and tickers and your scored values are exempt; a span over 8,000 characters
-      anchors no figure).
+      span; a word-for-word quote of a cited span passes; the unit's own entity names and
+      tickers and your scored values are exempt);
+    - ``claim_content_free`` -- no figure, nothing but function and evidence/meta words, and
+      either nothing but function words or a filler word about the evidence ("evidence",
+      "passage", "cited", ...).
 
     Each makes the claim false; `claim_penalty_preview` gives the resulting factor (the soft
     floor: each false claim costs a share of the unit, and other claims beyond 3 x E in total do not
@@ -642,11 +803,23 @@ def check_claim_rules(
         return refused
     findings: list[RailFinding] = []
     position: dict[str, int] = {}
+    nested = {
+        (str(row.get("entity_id")), i)
+        for row in answer.get("entity_predictions", [])
+        if isinstance(row, dict)
+        for i, claim in enumerate(row.get("claims") or [])
+        if isinstance(claim, dict) and NESTED_CITATIONS_KEY in claim
+    }
     for verdict in claims.verdicts:
         index = position.get(verdict.entity_id, 0)
         position[verdict.entity_id] = index + 1
         for reason in verdict.reasons:
             if reason == "contradicted":
+                continue
+            if reason == "malformed" and (verdict.entity_id, index) in nested:
+                # The scorer's reason (malformed), with why: not "empty or too long".
+                findings.append(RailFinding(
+                    verdict.entity_id, index, "claim_malformed", _CITATIONS_TEXT))
                 continue
             findings.append(RailFinding(
                 verdict.entity_id, index, f"claim_{reason}", _CLAIM_REASON_TEXT[reason]))
@@ -730,4 +903,8 @@ _CLAIM_REASON_TEXT = {
     "out_of_range": "a citation's offsets are not a slice of its document; the claim is false",
     "malformed": "empty, over 4,000 characters or over 400 judge tokens; the claim is false",
     "unanchored": "states a figure no cited span carries (every-figure rule); the claim is false",
+    "over_cap": "cites a span over 8,000 characters (cite the passage, not the document); the "
+    "claim is false",
+    "content_free": "states nothing but evidence or meta words with a filler word such as "
+    "'evidence' or 'passage', or nothing at all (no figure, no content word); the claim is false",
 }

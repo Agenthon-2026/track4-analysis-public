@@ -191,7 +191,9 @@ where F is the number of false claims, T the number of other claims and E the nu
 in the unit (the "soft floor"; `penalty_k` = 1 is the power the factor is raised to). In plain
 terms: each false claim costs a share of the unit; other claims beyond 3 × E in total (three times
 the number of entities, counted over the whole unit, not per entity) do not dilute the
-cost; a unit with no false claims is not penalised; content-free claims neither earn nor cost.
+cost; a unit with no false claims is not penalised; neutral claims neither earn nor cost (a
+content-free claim, only evidence or meta words with a filler word about the evidence, or nothing
+but function words, is false: see below).
 Up to that cap it is the plain share (on a unit with 7 or more entities, one false claim among
 twenty costs 5%; on a 1-entity unit the cap is 3, so the same claim costs 1/(1 + 3) = 25%);
 past that, a false claim keeps costing at least 1/(F + 3E) of the unit however many claims are
@@ -199,6 +201,10 @@ added. A unit whose every claim is false scores 0. A unit with no claims
 keeps its whole composite (alignment still requires `claims[]` on every entity). A unit is refused
 (worst-case score) only for structural errors: a schema violation, a missing, extra or duplicated
 entity, a non-finite number, an unresolved, undated or post-cutoff citation, a malformed citation.
+These checks read the citations in `claims`. A citation in a reason that does not resolve, is
+dated after the cutoff or points outside its document never refuses the unit; one that breaks
+the schema (a negative offset, a missing field, a `doc_id` that is not a string) does, like any
+schema error.
 
 A claim is **false** when any one of these holds, checked in this order:
 
@@ -240,20 +246,37 @@ A claim is **false** when any one of these holds, checked in this order:
    - Equivalent forms of a number are read as the same figure in claim and passage: a fraction
      of a point ("1/4 percentage point", "quarter-point", "¼ point" are 0.25 and so 25 bps), a
      number in words before a unit ("four basis points", "two percent"), and glued forms
-     ("7.3x", "$212mm", "25bp", "1.5pp").
-   - A cited span longer than **8,000 characters** (the per-citation cap of the reasoning
-     contract) anchors no figure. Cite the passage that states your figures, not a whole filing.
+     ("7.3x", "$212mm", "25bp", "1.5pp"). Numbers inside a web address ("?id=77", "/series/42",
+     an EDGAR path), disguised or not (look-alike colons and slashes, invisible characters, a
+     scheme-less "//host", a "www." host), are not figures, in claim and passage alike.
    - A claim that is **word for word** a piece of a span it cites (whitespace runs compared as
-     one space) passes the figure check whole, even if the quote is cut mid-number. This wins
-     over the span cap above: a verbatim quote passes even when the span it cites is over 8,000
-     characters (the quote is looked for in the first 200,000 characters of the span); the cap
-     applies to every other claim.
+     one space) passes the figure check whole, even if the quote is cut mid-number.
+   - **A citation over 8,000 characters** (the published per-citation cap) makes the claim
+     false, whatever it states, a verbatim quote included. Cite the passage that states your
+     figures, not a whole filing.
+   - **A content-free claim is false.** A claim with no figure whose every word, once the
+     unit's own entity names and tickers are set aside, is a function word or an evidence/meta
+     word, and which is either nothing but function words or has a filler word about the
+     evidence (evidence, passage(s), excerpt, pre-cutoff, cutoff, cite(d), citing, retrieved,
+     top-retrieved, nearest, placeholder, fallback, inference, context(ual), wording,
+     document(s), source(s), model-entailed), asserts nothing a passage could support: "Pre-cutoff
+     evidence selected for the submitted prediction.", "Evidence for X from the cited pre-cutoff
+     passage.", or the entity name alone. It is false and is not put to the judge. Any other
+     word makes a claim contentful ("Guidance was cut.", "Rates rose."), and ordinary finance
+     words without a filler word do too ("AAPL has no forecast.", "No quotes were submitted.").
+     The word lists are `CONTENT_FREE_META_WORDS` and `CONTENT_FREE_FILLER_ANCHORS` in
+     `qfbench2_track_analysis/scoring.py`.
+   - The Development board runs without the NLI contradiction check. The citation checks (wrong entity, offsets out of range), the figure check (from 5.2.2, numbers inside a web address are not figures) and the three claim rules added in 5.2.2 (a citation over 8,000 characters, a content-free claim and a claim that carries a `citations` key are false) are deterministic, so they apply on Development and in the Final alike. Run the local checker
+     (`baselines/guardrails_example/citation_rail.check_claim_rules`) before you write
+     `answer.json`: it applies the same rules.
 5. **Contradicted by its passage.** For every other claim the NLI judge reads each cited passage
    (the premise) against **your `claim` text** (the hypothesis) and returns the three-way
    probability that the passage **contradicts** the claim, averaged over the ensemble's two
    models. The claim is false when that probability exceeds `contradiction_bar` = 0.9 for any of
    its cited passages. A verbatim quote of a passage it cites (as in 4) states what that passage
-   states and is not put to the judge.
+   states and is not put to the judge. The judge reads a window of about 500 tokens: a passage
+   longer than that is judged on the window that shares the most words with your claim (the
+   first window on a tie), so a contradiction deep in a long passage is read.
 
 Every other claim is **neutral**: a quoted passage, an accurate paraphrase, and generic text the
 passage neither confirms nor denies are never charged and earn nothing here. Beyond 3 × E claims
@@ -264,9 +287,11 @@ claim either.
 
 It establishes that each claim is about the right entity, that it cites a real passage, that its
 figures are in that passage, and that the passage does not say the opposite. It does not
-establish that the prediction was derived from the evidence, and it does not try to: content-free
-claims are neutral here and score near zero in reasoning grading, so saying nothing checkable
-earns nothing, and stating specific true facts costs nothing.
+establish that the prediction was derived from the evidence, and it does not try to: a generic
+claim the passage neither confirms nor denies is neutral here and scores near zero in reasoning
+grading, and a content-free claim (only evidence or meta words with a filler word about the
+evidence, or nothing but function words) is false, so saying nothing
+checkable earns nothing, and stating specific true facts costs nothing.
 
 **Why the judge is asked about your claim and not about your forecast.** The obvious alternative
 is to ask whether the cited passage entails the *prediction*, rendered as a sentence from your
@@ -343,7 +368,7 @@ Every rule is specified case by case, on synthetic inputs, by the scorer's own t
 `scoring/tests/test_entity_bound_citations.py` (the entity rule).
 
 **Why a cap of 3 × E claims.** With a plain share (false claims / all claims), padding an
-answer with many content-free claims would shrink what each false claim costs toward nothing.
+answer with many neutral claims would shrink what each false claim costs toward nothing.
 Counting at most 3 × E non-false claims in total (E entities) stops that: a false claim always costs at least
 1/(F + 3E) of the unit, while an honest answer with no false claim still scores its whole
 composite, and answers with at most 3 × E other claims score exactly as under the plain share.

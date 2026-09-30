@@ -267,3 +267,25 @@ def test_a_missing_interval_bound_fails_the_whole_submission(
     assert outcome.diagnostics["reason"] == T4Reason.SCHEMA_INVALID.value
     # Not a coverage number at all -- the unit never reaches the coverage leg.
     assert outcome.diagnostics.get("interval_coverage") is None
+
+
+# --- a null point_forecast on a classification unit ----------------------------------------------
+def test_a_classification_row_may_omit_point_forecast_but_not_send_null(
+    tmp_path: pathlib.Path,
+) -> None:
+    """On a classification unit `point_forecast` is optional, so an absent one is scored; a
+    `null` one fails the published schema for the whole submission. The strong RAG baseline
+    leaves a missing value out for this reason (its tests pin that side)."""
+    absent = answer_for()
+    absent.pop("target_type", None)
+    del absent["entity_predictions"][0]["point_forecast"]
+    admitted = _score(tmp_path / "absent", absent)
+    assert admitted.state == "participant_success"
+
+    null = answer_for()
+    null.pop("target_type", None)
+    null["entity_predictions"][0]["point_forecast"] = None
+    refused = _score(tmp_path / "null", null)
+    assert refused.state == "participant_failure"
+    assert refused.score == DOMAIN_MIN
+    assert refused.diagnostics["reason"] == T4Reason.SCHEMA_INVALID.value

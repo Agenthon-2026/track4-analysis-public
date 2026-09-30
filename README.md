@@ -148,6 +148,11 @@ example includes them. If supplied, `target_type` must match the unit's declared
 a mismatch fails the whole unit. The scorer also requires exactly the task's entity roster and
 the prediction appropriate to its target type, as described above.
 
+Fields the schema does not name are allowed in `answer.json`, at the top level and in each
+entity row (the template's `_comment` is one); they do not fail the unit. Assume the leakage
+scan reads them like every other byte of your output. This differs from `submission.json`,
+whose schema refuses unknown keys.
+
 **These are not partial-credit penalties.** A missing `interval.lo` or `interval.hi`, an empty or
 absent `claims` array, or an `interval.level` other than the card's — on *any* single entity row —
 fails `g1_schema` for the **whole unit**: the unit is scored `t4.schema_invalid`
@@ -170,6 +175,21 @@ The image-size row remains the published recommendation and rejection policy; it
 verified automatically enforced image-size quota. The image-layer limit is a different resource.
 See the [image submission guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.1/docs/IMAGE-SUBMISSIONS.md)
 for anonymous public pulls and organizer-confirmed private mirrors.
+
+Write `answer.json` as UTF-8 without a byte-order mark. A byte-order mark or non-UTF-8 bytes
+fail: the scorer cannot read the file as JSON, and the unit gets the worst-case score. Only
+`/output/answer.json` is scored: an answer written anywhere else, even `/output/<dir>/answer.json`,
+counts as no answer. Other files in `/output` are not scored, but under the organizers'
+platform rules the output checker reads the whole tree after your process exits, and the unit
+scores `no_output` if the tree has any of these:
+
+- more than 256 files, or folders nested 8 or more levels deep;
+- a symbolic or hard link, or a special file;
+- a file with a setuid, setgid or sticky bit;
+- a file more than 64 times larger than the disk space it occupies (a heavily sparse file), two names that differ only in letter case or Unicode form, or a name with a backslash or a control character;
+- no files at all, or more than 64 MiB in total in Development (a single file is capped at 64 MiB).
+
+In the Final, a canary string anywhere in the output is scored as contamination.
 
 For CPU, memory and GPU settings, read the unit card and the
 [Development runtime guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.1/docs/DEVELOPMENT-RUNTIME.md).
@@ -303,9 +323,13 @@ that cost, and a unit with no false claims is not penalised. Per **claim** the c
    over 4000 characters or over 400 judge tokens.
 4. Applies the figure check: **every** figure in the claim must appear in a span it cites, read
    against the whole cited span. A claim with a figure no cited span carries is **false** and is
-   not put to the judge. A span over 8,000 characters anchors no figure; your own scored values
-   and numbers inside the unit's own entity names or tickers are exempt; a word-for-word quote of
-   a cited span passes whole, even when that span is over 8,000 characters.
+   not put to the judge. A claim citing a span over 8,000 characters is **false**, and so is a
+   content-free claim (no figure, only evidence/meta words with a filler word about the evidence,
+   or nothing but function words); your own scored values and numbers
+   inside the unit's own entity names or tickers are exempt; a word-for-word quote of a cited span
+   within the cap passes whole. A claim cites one span of one document, so figures from two
+   documents need two claims, one per document; figures from two passages of one document fit
+   in one claim only if its span covers both, within the cap.
 5. Asks the judge for the probability that each cited passage **contradicts your `claim` text**
    (three-way, averaged over both models). Above `contradiction_bar` = 0.9 the claim is
    **false**; otherwise it is neutral. A word-for-word quote of a cited span is not put to the
@@ -388,7 +412,7 @@ python baselines/baseline_agent.py \
 
 ## Scoring formula
 
-Scorer 5.2.1. For a unit that passes the structural checks (schema, roster, citations resolved
+Scorer 5.2.2. For a unit that passes the structural checks (schema, roster, citations resolved
 and dated on or before the cutoff):
 
 ```
@@ -420,10 +444,11 @@ mapped so that 0 stays 0, the unit's declared naive rule (`reference/naive_answe
 **0.5**, and a perfect answer scores 1, linearly in between on each side. The anchor is the
 stronger of the naive rule's own quality and, on a ranking unit, a constant forecast's 0.5.
 
-On every target type, a missing entity or required prediction, or a nonfinite supplied numeric
-value, fails validation for the whole unit before predictive quality is computed. The unit
-receives the committed worst-case value; there is no per-row partial-credit replacement and
-no row is dropped to shrink a denominator. See
+On every target type, a missing entity or required prediction, or a NaN or Inf in any number
+the schema names (`point_forecast`, the `interval` numbers, `rank`, and span offsets), fails
+validation for the whole unit before predictive quality is computed. The unit receives the
+committed worst-case value; there is no per-row partial-credit replacement and no row is dropped
+to shrink a denominator. See
 [`align_predictions`](qfbench2_track_analysis/alignment.py) and
 [`score_unit`](qfbench2_track_analysis/scoring.py).
 
@@ -444,12 +469,12 @@ non-rankable; it checks the interface, not prediction accuracy or production fai
 
 ---
 
-## Quick start in five commands
+## Quick start in six commands
 
 ```bash
 # 1. Install.
 # baselines/requirements.txt is comments only -- the minimal baseline is standard library
-# by design -- so this line installs nothing. It is here because step 4 and step 5 need the
+# by design -- so this line installs nothing. It is here because steps 4 to 6 need the
 # shared toolkit, which brings jsonschema with it.
 pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.5.1#subdirectory=common"
 
@@ -473,7 +498,17 @@ jsonschema.validate(json.load(open("/tmp/answer.json")), schema)   # raises on a
 print("schema ok")
 PY
 
-# 5. Smoke-test via the harness.
+# 5. Run the scorer's structural and claim rules (no NLI models needed), from the repo root.
+# The schema alone accepts a NaN and a label outside the task's vocabulary; this check refuses
+# them as the scorer does. A `unit_refused` finding means the whole unit would fail.
+python - <<'PY'
+import json
+from baselines.guardrails_example.citation_rail import check_claim_rules
+for f in check_claim_rules(json.load(open("/tmp/answer.json")), "units/t4-EXAMPLE-eps-beat"):
+    print(f.code, f.claim_index, f.message)
+PY
+
+# 6. Smoke-test via the harness.
 # PYTHONPATH is required: the harness imports this repo's qfbench2_track_analysis package,
 # and the repo is not pip-installable from a checkout.
 #    `--profile smoke` is the default and runs the NON-RANKABLE preview factory

@@ -2,7 +2,7 @@
 
 These pin the *call conventions* into the shared toolkit rather than any model behaviour, so they
 need no weights and no network. They exist because both halves of g3 were previously inert, each
-for the same underlying reason: a predicate keyed on a field that appears in zero real answers.
+for the same underlying reason: a predicate keyed on a field that appears in no well-formed answer.
 
 1. **Faithfulness was identically 0.0.** The gate handed raw claim dicts to
    ``citation_faithfulness``, which iterates ``claim["citations"]``. In the multi-entity format a

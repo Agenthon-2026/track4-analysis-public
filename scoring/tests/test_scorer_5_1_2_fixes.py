@@ -175,18 +175,12 @@ def test_non_integer_offsets_are_refused_not_dropped(
     assert outcome.diagnostics.get("out_of_range_citation_count") is None
 
 
-def _nested(start: Any, end: Any) -> dict[str, Any]:
-    """The explicit `citations[]` shape, which the schema's offset types do not reach."""
+def _offsets(start: Any, end: Any) -> dict[str, Any]:
+    """A claim with these offsets, for `align_predictions` called directly (past the schema gate,
+    whose offset types would refuse most of them first)."""
     answer = answer_for(entities=ROSTER, claim_text=CLAIM)
     first = answer["entity_predictions"][0]["claims"][0]
-    answer["entity_predictions"][0]["claims"] = [
-        {
-            "claim": CLAIM,
-            "citations": [
-                {"doc_id": first["doc_id"], "span_start": start, "span_end": end}
-            ],
-        }
-    ]
+    first["span_start"], first["span_end"] = start, end
     return answer
 
 
@@ -200,7 +194,7 @@ def _align(answer: dict[str, Any]) -> Any:
 
 
 def test_alignment_reads_a_whole_number_float_offset_as_its_integer() -> None:
-    aligned = _align(_nested(0.0, 57.0))
+    aligned = _align(_offsets(0.0, 57.0))
     cite = aligned.claims_by_entity[0][0].citations[0]
     assert (cite["span_start"], cite["span_end"]) == (0, 57)
     assert not any(isinstance(cite[k], float) for k in ("span_start", "span_end"))
@@ -214,5 +208,5 @@ def test_alignment_refuses_a_non_integer_offset_as_malformed(
     start: Any, end: Any
 ) -> None:
     with pytest.raises(T4ParticipantFailure) as excinfo:
-        _align(_nested(start, end))
+        _align(_offsets(start, end))
     assert excinfo.value.reason is T4Reason.CITATION_MALFORMED

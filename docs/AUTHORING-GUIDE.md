@@ -150,16 +150,15 @@ costs a share of the unit, other claims beyond 3 × E in total do not dilute tha
 false claims is not penalised. A claim is false when it cites a
 document that is not about its entity, cites offsets outside the document, is empty, over 4000
 characters or over 400 judge tokens, states **any** figure that no span it cites carries (read
-against the whole cited span; a span over 8,000 characters anchors no figure; dates, periods,
+against the whole cited span; dates, periods,
 counts of periods and identifiers are not figures; numbers inside the unit's own entity names or
 tickers are exempt, and so is a figure that equals a scored value you submitted: your
 point forecast on a regression or ranking unit, and your interval bounds only when the unit's
 interval leg is scored; the passages' scale steps apply but no rounding, a figure whose written
 direction contradicts the value's sign is not exempt, and your rank is never exempt), or when the judge finds the passage **contradicts** it
 (three-way contradiction probability above `contradiction_bar` = 0.9). A word-for-word quote of a
-span it cites passes the figure check and is not put to the judge; a verbatim quote passes even when the span it cites is over 8,000 characters (the quote is
-looked for in the first 200,000 characters of the span); the 8,000-character cap applies to
-every other claim. Everything else is neutral: never charged, and it earns nothing here.
+span it cites passes the figure check and is not put to the judge. A claim citing a span over
+8,000 characters is false, and so is a content-free claim (no figure, only evidence/meta words with a filler word about the evidence, or nothing but function words). Everything else is neutral: never charged, and it earns nothing here.
 
 **Claims are extractive facts.** Write claims that say what the passage says, with the figures it
 carries: **every figure in a claim must appear in a passage it cites**. A figure you computed (a
@@ -249,7 +248,7 @@ a **bonus** on top of the analysis score (final-score/v2):
 `analysis` is your 0..1 analysis score after the per-claim faithfulness penalty, shown on the
 old leaderboard scale (`-0.27 + 1.27 x analysis`: 0 shows -0.27, the old worst case, and 1 shows
 1.0); `reasoning` is in [0, 1]. The bonus is uncapped, so the maximum is 1.25. A keyed unit with
-no judged reasons (missing, not judged, or refused for a cap or the deny list) adds 0 to the
+no judged reasons (missing, none within the caps, or refused for the deny list) adds 0 to the
 bonus: leaving reasons out never costs anything. A block that fails the schema is different (see
 "The field" above). Reasoning is graded offline after the Final, on the held-out units, and never
 appears on a CodaBench board, the Development leaderboard included; the Development leaderboard
@@ -277,7 +276,12 @@ plus `interval` on units that score an interval leg (numeric truth, and `interva
 to false in `card.toml`). No unit declares `label_probs`. An undeclared field is dropped before
 the judge reads your answer; it is not an error and costs nothing.
 
-**Caps.** Over any cap, that unit's reasoning is not judged and scores 0. Nothing is clipped.
+**Caps.** Reasons are checked in the order you submit them. A reason is judged only if every
+citation in it is at most 8,000 characters and, together with the reasons already judged, the
+reasons stay within 6,500 bytes and their cited evidence within 46,500 bytes. A reason that does
+not fit is not judged and scores 0 (every target reason stays in the denominator); later reasons are
+still checked. If no reason fits, the unit's reasoning scores 0. Put your strongest reason
+first. The 3,000-byte answer cap still applies to the whole unit. Nothing is clipped.
 
 | cap | limit, per unit |
 |---|---|
@@ -289,7 +293,8 @@ the judge reads your answer; it is not an error and costs nothing.
 The last three are counted the way the grader counts what the judge reads: UTF-8 bytes of compact
 JSON. Plain ASCII text is one byte per character; a line break, quote or backslash is two (it is
 escaped); accented letters, typographic quotes and non-Latin scripts take two to four; a control
-character six; a URI in cited text is masked with the same number of `█` (three bytes each); and
+character six; a URI in cited text is masked with the same number of `█` (three bytes each), a
+URL in your own reason text with the same number of `#` (one byte each); and
 every citation adds about 75 bytes of JSON around its text plus its `doc_id` and offsets. In practice: about 6,000 characters of
 plain reason text over three reasons, and about 45,000 characters of plain cited text in a few
 citations. The three caps add up to the grader's 56,000-byte limit on what the judge reads from
@@ -298,12 +303,21 @@ you, so an answer within them never reaches that limit. The local checker below 
 
 **Deny list.** The grader refuses a unit's request, and that unit's reasoning scores 0, if the
 text you wrote contains any of these, case-insensitively, as a substring: `leaderboard`,
-`canary`, `://`, `/home/`, `units/`, `reference/`, `outcome.json`, `team_id`, `team name`,
+`canary`, `/home/`, `units/`, `reference/`, `outcome.json`, `team_id`, `team name`,
 `participant_id`, `participant name`, `submission_id`, `other submission`. `mechanism` and
 `answer_implication` are always checked. Exempt: the corpus text your citations resolve to,
-and a `premise` that is, as a whole (surrounding whitespace aside), a verbatim quote of a
-corpus document; a premise that adds any word of your own is checked. So do not put URLs or
-file paths in your own words.
+and a `premise` that is a verbatim quote of a corpus document: with every URL masked, it has at
+least 3 words and, the document's URLs masked the same way, appears in one corpus document. A
+premise that adds any word of your own, a bare token such as `units/`, `canary` or `/home/`, and
+a quote of one or two words are checked. So do not put file paths or the other listed tokens in
+your own words. URLs in reasons are masked, not refused. The deny list still runs on the URL as written, so a
+URL containing a listed token (for example a path with `units/`) is refused; so is a `://` with
+no scheme letters before it. Disguised URLs are masked too: look-alike colons and slashes
+(fullwidth or other Unicode forms), invisible characters inside a URL, a scheme-less `//host`
+and a `www.` host; a deny-listed phrase disguised the same way is refused. These are not
+URLs and are left as written: a bare host or path (`example.org/a`), `mailto:` and `data:`, an
+IP address, a non-breaking space between the slashes, and dot or bracket obfuscation
+(`example[.]org`).
 
 **Organiser faults.** If the grader fails on an organiser input (the task, the key, the
 corpus, the judge forms or the policy), the grading run stops, the organiser fixes it and the

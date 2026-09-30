@@ -35,6 +35,15 @@ def test_clean_claim_passes():
     assert codes(make_answer()) == []
 
 
+@pytest.mark.parametrize("value", [[{"doc_id": "d1", "span_start": 0, "span_end": 5}], [], None])
+def test_a_claim_carrying_citations_is_flagged(value):
+    """Scorer 5.2.2 removed the claim-level `citations` list: the scorer counts such a claim as
+    false (malformed). The claim's own span is still checked (clean here)."""
+    findings = check_answer(make_answer(citations=value), CORPUS, CUTOFF)
+    assert [(f.code, f.claim_index) for f in findings] == [("claim_citations", 0)]
+    assert "citations" in findings[0].message and "5.2.2" in findings[0].message
+
+
 def test_stale_doc_flagged():
     assert codes(make_answer(doc_id="d2")) == ["stale_doc"]
 

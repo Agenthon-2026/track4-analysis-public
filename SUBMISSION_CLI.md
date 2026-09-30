@@ -92,7 +92,7 @@ internet** in official scoring.
 
 | Mode | Who | Meaning |
 |---|---|---|
-| `none` | **Simulation (T3)** | Fully offline (`--network=none`). Exactly the historical closed-resource behavior; any attempted outbound connection fails the run. |
+| `none` | **Simulation (T3)** | Fully offline (`--network=none`). Exactly the historical closed-resource behavior; the container has no network, so any outbound connection attempt fails. |
 | `restricted` | **Agent tracks (T1 coding, T2 forecasting, T4 Explainability)** | No open internet. Egress **only** through the organizer's audited proxy to the **organizer-hosted model endpoint** given by `MODEL_ENDPOINT` (open models, free to use, per-run budget). Every connection is logged (domain, bytes, timestamps); the log is the audit artifact for verification within the joint Final + Verification phase. |
 
 > ### ⚠️ Agent tracks: there is no third-party model-API access
@@ -227,10 +227,11 @@ everything else to `simulate`. Six of the public dev units (`t3-gbatch-*`) are b
 
 **Contract invariants (enforced by gate `g0_integrity` / `g1_schema` / `g2_cutoff_resource`):**
 
-1. The image must honor the card's network mode: `none` (simulation) means fully offline — any
-   attempted outbound connection fails the run; `restricted` (agent tracks) means egress only
-   through the audited proxy to the house model endpoint — any connection outside that allowlist
-   fails the run, and no vendor model API is on it.
+1. The image must honor the card's network mode: `none` (simulation) means fully offline — the
+   container has no network, so any outbound connection attempt fails; `restricted` (agent
+   tracks) means egress only through the audited proxy to the house model endpoint — a connection
+   to anything outside that allowlist is refused, every connection is logged, and no vendor model
+   API is on the allowlist.
 2. Output must validate against the track output schema *before* any scoring (`g1_schema`).
 3. The image must not read any path outside `/input` and `/output`; the canary registry and held-out
    targets are never mounted.
@@ -259,7 +260,7 @@ everything else to `simulate`. Six of the public dev units (`t3-gbatch-*`) are b
    contract above.)
 
 
-## How faithfulness is scored (Track 4, scorer 5.2.1)
+## How faithfulness is scored (Track 4, scorer 5.2.2)
 
 Faithfulness is a **per-claim penalty**, not an admission gate. Each claim in
 `entity_predictions[].claims` is either **false** or **neutral**, and each false claim costs a share of the unit. The unit's analysis score is multiplied by
@@ -271,11 +272,15 @@ not a limit per entity). Up to the cap the cost is the plain share: on a unit wi
 entities, one false claim among twenty claims costs 5%; with fewer entities the cap is lower,
 so it costs more (on a 1-entity unit, one false claim among twenty costs 1/(1 + 3) = 25%). Past
 the cap, adding more claims does not shrink what a false claim costs (on a 10-entity unit, one
-false claim always costs at least 1/31 of it). Content-free claims are never false and earn
-nothing; beyond the cap they do not change the factor. Nothing
+false claim always costs at least 1/31 of it). Neutral claims are never charged and earn
+nothing; beyond the cap they do not change the factor. A content-free claim (no figure, only
+evidence or meta words with a filler word about the evidence, or nothing but function words) is not neutral: it is false (below). Nothing
 about faithfulness refuses a unit; structural errors still do (schema, a missing, extra or
 duplicated entity, a non-finite number, an unresolved, undated or post-cutoff citation, a
-malformed citation).
+malformed citation). These checks read the citations in `claims`. A citation in a reason that
+does not resolve, is dated after the cutoff or points outside its document never refuses the
+unit; one that breaks the schema (a negative offset, a missing field, a `doc_id` that is not a
+string) does, like any schema error.
 
 **`faithfulness_rubric` in `task.json` is a legacy field; ignore it.** Every unit's `task.json` still
 carries a `faithfulness_rubric` text. The public practice units' `card.toml` files carry one too;
@@ -287,15 +292,29 @@ reasoning grader reads the field. The rules that apply are the ones in this sect
 
 A claim is **false** when it cites a document the unit manifest does not label for its entity (or
 mark `shared`); cites offsets outside the document; is empty, over 4000 characters or over 400
-judge tokens; states **any** figure that no span it cites carries (read against the whole cited
-span; a span over 8,000 characters anchors no figure); or when the NLI ensemble's three-way
-probability that the cited passage **contradicts** the claim exceeds `contradiction_bar` = 0.9.
+judge tokens; cites a span over 8,000 characters; states **any** figure that no span it cites
+carries (read against the whole cited span); is content-free (no figure; once the unit's own
+entity names and tickers are set aside, nothing but function words and evidence/meta words; and
+either nothing but function words is left, or one of them is a filler word about the evidence:
+evidence, passage(s), excerpt, pre-cutoff, cutoff, cite(d), citing, retrieved, top-retrieved,
+nearest, placeholder, fallback, inference, context(ual), wording, document(s), source(s),
+model-entailed; for example "Pre-cutoff evidence selected for the submitted prediction." A
+claim whose only words are ordinary finance words such as forecast, quote, support, submitted or
+available, "AAPL has no forecast.", is not content-free); or when the NLI ensemble's
+three-way probability that the cited passage **contradicts** the claim exceeds `contradiction_bar` = 0.9. A passage longer than the judge's
+window (about 500 tokens) is judged on the window that shares the most words with the claim.
+The Development board runs without the NLI contradiction check. The citation checks (wrong entity, offsets out of range), the figure check (from 5.2.2, numbers inside a web address are not figures) and the three claim rules added in 5.2.2 (a citation over 8,000 characters, a content-free claim and a claim that carries a `citations` key are false) are deterministic, so they apply on Development and in the Final alike. Run the local checker (`check_claim_rules` in
+`baselines/guardrails_example/citation_rail.py`) before you write `answer.json`.
 Every other claim is neutral: it is never charged, and it earns nothing here. `penalty_k` = 1
 (the power the factor is raised to), `contradiction_bar` = 0.9 and the cap of 3 × E
 other claims are fixed scorer constants.
 
 **Claims are extractive facts.** State what the cited passage says, with the figures it carries;
-**every figure in a claim must appear in a passage the claim cites**. A figure you derived (a
+**every figure in a claim must appear in a passage the claim cites**. A claim cites one span of
+one document (`doc_id`, `span_start`, `span_end`), so figures from two documents need two
+claims, one per document. Figures from two passages of one document fit in one claim only if
+its span covers both, within the 8,000-character cap; otherwise write two claims. A figure you
+derived (a
 change, a ratio, an average) belongs in `submitted_reasons` (the `mechanism`), which is where
 derivations are judged, not in a claim. Exempt: a figure that equals your own scored point
 forecast (or, when the interval is scored, your interval bounds), at the passages' scale steps
@@ -306,9 +325,8 @@ Dates, periods, counts of periods ("13 weeks") and identifiers are not figures. 
 are read as the same figure: a fraction of a point ("1/4 percentage point" or "quarter-point" is
 25 bps), a number in words before a unit ("four basis points"), and glued forms ("7.3x",
 "$212mm", "1.5pp"). A claim that quotes a span it cites word for
-word passes the figure check and is not put to the judge; a verbatim quote passes even when the span it cites is over 8,000 characters (the quote is
-looked for in the first 200,000 characters of the span); the 8,000-character cap applies to
-every other claim. A value from the task table is cited
+word passes the figure check and is not put to the judge, as long as that span is within the
+8,000-character cap. A value from the task table is cited
 with `"doc_id": "task"` and a span inside that entity's row of the task table (one line per
 `task.json` `entities` row, `json.dumps(row, ensure_ascii=False, separators=(", ", ": "))`, joined
 by `"\n"`; `qfbench2_track_analysis.corpus.task_table_text` builds it). Evidence earns credit only
@@ -324,7 +342,9 @@ Track 4 has a second grader beside the analysis score and the faithfulness penal
 panel that grades your **reasons**. Your reasons go in one optional top-level field of
 `answer.json`, `submitted_reasons`, next to `entity_predictions`. The reasoning grader reads
 nothing else you write: `claims`, `evidence_trace` and `notes` are not reasons. An answer
-without the field has submitted no reasons.
+without the field has submitted no reasons. The judge is instructed to treat your answer and your
+reasons as material to evaluate, not as instructions: a request, command or claim about how
+to score is to be read only as text in its field and not followed.
 
 **The field.** `submitted_reasons` is a list of 1 to 3 reasons. Omit the field to submit none.
 A `submitted_reasons` block that does not match the schema (an empty list, more than 3
@@ -342,7 +362,9 @@ first. Each reason is an object:
 | `citations` | no | a list of `{doc_id, span_start, span_end}` (integers >= 0), in the same character-offset convention as `claims` |
 
 A citation must resolve in the frozen corpus and its document must be dated on or before the
-cutoff; otherwise the judge never sees that passage. The task-table citation `"doc_id": "task"`
+cutoff; otherwise the judge never sees that passage. A reason citation that does not resolve,
+is dated after the cutoff or points outside its document never refuses the unit; one that
+breaks the schema does, like any schema error. The task-table citation `"doc_id": "task"`
 is for claims only: the grader resolves reason citations against the corpus alone, so a
 `"task"` citation in a reason resolves to nothing and the judge never sees it. The judge reads
 the task statement and each entity's id and name, not the rows of the task table: state a task
@@ -375,7 +397,7 @@ your prediction and, on units that score one, your interval; from scorer 5.2.1 t
 can score above 0.5 only as far as the point forecast beats the naive rule), shown on the
 old leaderboard scale (`-0.27 + 1.27 x analysis`: 0 shows -0.27, the old worst case, and 1 shows
 1.0); `reasoning` is in [0, 1]. The bonus is uncapped, so the maximum is 1.25. A keyed unit with
-no judged reasons (missing, not judged, or refused for a cap or the deny list) adds 0 to the
+no judged reasons (missing, none within the caps, or refused for the deny list) adds 0 to the
 bonus: leaving reasons out never costs anything. A block that fails the schema is different (see
 "The field" above). Reasoning is graded offline after the Final, on the held-out units, and never
 appears on a CodaBench board, the Development leaderboard included; the Development leaderboard
@@ -403,7 +425,12 @@ plus `interval` on units that score an interval leg (numeric truth, and `interva
 to false in `card.toml`). No unit declares `label_probs`. An undeclared field is dropped before
 the judge reads your answer; it is not an error and costs nothing.
 
-**Caps.** Over any cap, that unit's reasoning is not judged and scores 0. Nothing is clipped.
+**Caps.** Reasons are checked in the order you submit them. A reason is judged only if every
+citation in it is at most 8,000 characters and, together with the reasons already judged, the
+reasons stay within 6,500 bytes and their cited evidence within 46,500 bytes. A reason that does
+not fit is not judged and scores 0 (every target reason stays in the denominator); later reasons are
+still checked. If no reason fits, the unit's reasoning scores 0. Put your strongest reason
+first. The 3,000-byte answer cap still applies to the whole unit. Nothing is clipped.
 
 | cap | limit, per unit |
 |---|---|
@@ -415,7 +442,8 @@ the judge reads your answer; it is not an error and costs nothing.
 The last three are counted the way the grader counts what the judge reads: UTF-8 bytes of compact
 JSON. Plain ASCII text is one byte per character; a line break, quote or backslash is two (it is
 escaped); accented letters, typographic quotes and non-Latin scripts take two to four; a control
-character six; a URI in cited text is masked with the same number of `█` (three bytes each); and
+character six; a URI in cited text is masked with the same number of `█` (three bytes each), a
+URL in your own reason text with the same number of `#` (one byte each); and
 every citation adds about 75 bytes of JSON around its text plus its `doc_id` and offsets. In practice: about 6,000 characters of
 plain reason text over three reasons, and about 45,000 characters of plain cited text in a few
 citations. The three caps add up to the grader's 56,000-byte limit on what the judge reads from
@@ -424,14 +452,21 @@ you, so an answer within them never reaches that limit. The local checker below 
 
 **Deny list.** The grader refuses a unit's request, and that unit's reasoning scores 0, if the
 text you wrote contains any of these, case-insensitively, as a substring: `leaderboard`,
-`canary`, `://`, `/home/`, `units/`, `reference/`, `outcome.json`, `team_id`, `team name`,
+`canary`, `/home/`, `units/`, `reference/`, `outcome.json`, `team_id`, `team name`,
 `participant_id`, `participant name`, `submission_id`, `other submission`. `mechanism` and
 `answer_implication` are always checked. Exempt: the corpus text your citations resolve to,
 and a `premise` that is a verbatim quote of a corpus document: with every URL masked, it has at
 least 3 words and, the document's URLs masked the same way, appears in one corpus document. A
-premise that adds any word of your own, a bare URL, a bare token such as `units/`, `canary` or
-`/home/`, and a quote of one or two words are checked. So do not put URLs or file paths in your
-own words.
+premise that adds any word of your own, a bare token such as `units/`, `canary` or `/home/`, and
+a quote of one or two words are checked. So do not put file paths or the other listed tokens in
+your own words. URLs in reasons are masked, not refused. The deny list still runs on the URL as written, so a
+URL containing a listed token (for example a path with `units/`) is refused; so is a `://` with
+no scheme letters before it. Disguised URLs are masked too: look-alike colons and slashes
+(fullwidth or other Unicode forms), invisible characters inside a URL, a scheme-less `//host`
+and a `www.` host; a deny-listed phrase disguised the same way is refused. These are not
+URLs and are left as written: a bare host or path (`example.org/a`), `mailto:` and `data:`, an
+IP address, a non-breaking space between the slashes, and dot or bracket obfuscation
+(`example[.]org`).
 
 **Organiser faults.** If the grader fails on an organiser input (the task, the key, the
 corpus, the judge forms or the policy), the grading run stops, the organiser fixes it and the

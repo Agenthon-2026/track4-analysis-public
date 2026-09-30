@@ -337,7 +337,7 @@ Before submitting your Docker image, verify every item:
 
 ## Evaluation metrics (recap)
 
-Scorer 5.2.1. The full rules are in the top-level `README.md`, "Scoring formula", and in
+Scorer 5.2.2. The full rules are in the top-level `README.md`, "Scoring formula", and in
 `docs/CONCEPTS.md`.
 
 | Metric | Weight | Description |

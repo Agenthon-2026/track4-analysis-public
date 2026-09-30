@@ -20,6 +20,7 @@ an accurate claim; whether the evidence supports the forecast is reasoning gradi
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import pathlib
 from typing import Any
@@ -250,21 +251,22 @@ def test_a_claim_with_several_citations_is_read_on_its_most_contradicting_one(
     roster = EntityRoster(entity_ids=ROSTER)
     answer = answer_for(entities=ROSTER, claim_text=prose)
     claim = answer["entity_predictions"][0]["claims"][0]
-    answer["entity_predictions"][0]["claims"] = [
-        {
-            "claim": prose,
-            "citations": [
-                {"doc_id": "TRIVIA", "span_start": 0, "span_end": len(TRIVIA_TEXT)},
-                {
-                    "doc_id": claim["doc_id"],
-                    "span_start": 0,
-                    "span_end": len(SUPPORTING_TEXT),
-                },
-            ],
-        }
-    ]
+    claim["span_end"] = len(SUPPORTING_TEXT)
     aligned = align_predictions(
         answer, roster, target_type="classification", interval_level=0.90
+    )
+    # From 5.2.2 a participant claim cites one span (the claim-level `citations` list is
+    # removed); the evaluator still reads every citation a `Claim` holds, so the two passages
+    # are set on the aligned claim directly.
+    cites = (
+        {"doc_id": "TRIVIA", "span_start": 0, "span_end": len(TRIVIA_TEXT)},
+        {"doc_id": claim["doc_id"], "span_start": 0, "span_end": len(SUPPORTING_TEXT)},
+    )
+    [only] = aligned.claims_by_entity[0]
+    aligned = dataclasses.replace(
+        aligned,
+        claims_by_entity=((dataclasses.replace(only, citations=cites),),),
+        citations_by_entity=(cites,),
     )
     texts = {"TRIVIA": TRIVIA_TEXT, claim["doc_id"]: SUPPORTING_TEXT}
     report = evaluate_claims(

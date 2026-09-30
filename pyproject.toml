@@ -17,7 +17,7 @@ name = "qfbench2-track-analysis"
 # composite legs are both ratios in [0, 1]). A consumer pinned to 2.x must read the
 # "What changed" notes in `qfbench2_track_analysis/scoring.py` before moving. This is also the ONE
 # implementation: there is no second copy elsewhere.
-version = "5.2.1"
+version = "5.2.2"
 description = "QFBench 2.0 Track-4 verifier/scorer: qfbench2_track_analysis.scoring.build_verifier(ctx) (rankable, mandatory production judge) and build_smoke_verifier(ctx) (non-rankable preview). The shared faithfulness primitives live in qfbench2-common."
 requires-python = ">=3.13"
 dependencies = [

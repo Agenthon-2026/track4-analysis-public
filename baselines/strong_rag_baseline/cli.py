@@ -92,8 +92,8 @@ def _mock_reply(system: str, user: str) -> str:
 
     Returns the same JSON shape `prompts.build_user_prompt` asks a real model for, so it
     travels the identical parse-and-ground path. With no excerpt to quote -- a unit where
-    retrieval returned nothing -- it emits no evidence, which is the honest answer and
-    still the one that fails `g1_schema`. That is a property of the unit, not of the mock.
+    retrieval returned nothing -- it emits no evidence, which is the honest answer; the
+    agent then cites corpus text itself (`agent._fallback_claims`).
     """
     del system  # the stub does not read its instructions
     match = _EXCERPT_RE.search(user)
@@ -146,6 +146,39 @@ def run(
         run_entity(task, entity, index, corpus, client, top_k)
         for entity in task.get("entities", [])
     ]
+    budget_denied = [r for r in results if r.budget_denied]
+    # A non-zero exit is charged to the team as a crashed container, and nothing attributes
+    # an in-run House refusal or an outage to the platform. So a budget refusal (before or
+    # after a reply) and every model call failing both finish the unit with fallback rows,
+    # exit 0, and are recorded in `notes` (see `formatter.build_answer`) so the unit can be
+    # found later.
+    if budget_denied:
+        if all(r.call_failed or r.budget_denied for r in results):
+            when = "before any model reply was received"
+        elif all(r.fallback for r in results):
+            when = "before any usable model reply was received"
+        else:
+            when = "after at least one usable model reply"
+        print(
+            f"strong_rag_baseline: the model request allowance was used up (the House "
+            f"answered 403 grant_denied) {when}; {len(budget_denied)} of {len(results)} "
+            f"entities got fallback rows "
+            f"(listed in notes.budget_denied_entities)",
+            file=sys.stderr,
+        )
+    elif results and all(r.call_failed for r in results):
+        print(
+            f"strong_rag_baseline: every model call failed ({len(results)} entities); "
+            f"every entity got a fallback row (listed in notes.call_failed_entities)",
+            file=sys.stderr,
+        )
+    elif results and all(r.fallback for r in results):
+        # The model answered, but no reply could be used (a wrong model, no JSON anywhere):
+        # a fault in the agent or its settings, which an answer made only of placeholder
+        # rows would hide.
+        raise RuntimeError(
+            f"no model reply was usable ({len(results)} entities); no answer written"
+        )
     answer = build_answer(task, results, corpus)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(

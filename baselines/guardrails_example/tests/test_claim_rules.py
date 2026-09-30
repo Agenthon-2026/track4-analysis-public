@@ -121,15 +121,22 @@ CASES = [
     (whole("SYNDOC_A_20260201", "Revenue grew 5% to $4,210 million."), "claim_unanchored"),
     (whole("SYNDOC_B_20260201", "Revenue was $980 million."), "claim_wrong_entity"),
     (cite("SYNDOC_A_20260201", 0, len(A_TEXT) + 5, "Revenue was reported."), "claim_out_of_range"),
-    # the 8,000-character cap: a paraphrase is not anchored by an over-cap span ...
-    (whole("SYNDOC_LONG_20260201", "Segment revenue was $5,555 million."), "claim_unanchored"),
-    # ... but a verbatim quote passes the figure rule in a span of any length
-    (whole("SYNDOC_LONG_20260201", "Segment revenue of $5,555 million was reported."), None),
+    # the 8,000-character cap (5.2.2): a claim citing an over-cap span is false, a paraphrase ...
+    (whole("SYNDOC_LONG_20260201", "Segment revenue was $5,555 million."), "claim_over_cap"),
+    # ... and a verbatim quote alike
+    (whole("SYNDOC_LONG_20260201", "Segment revenue of $5,555 million was reported."), "claim_over_cap"),
+    # a content-free claim is false (5.2.2); a short contentful one is not
+    (whole("SYNDOC_A_20260201", "Pre-cutoff evidence selected for the submitted prediction."),
+     "claim_content_free"),
+    (whole("SYNDOC_A_20260201", "Revenue rose."), None),
     # the unit's own entity name carries a number that is not a figure; an altered one is
     (whole("SYNDOC_A_20260201", "Phillips 66 Synthetic reported revenue of $4,210 million."), None),
     (whole("SYNDOC_A_20260201", "Phillips 67 Synthetic reported revenue of $4,210 million."), "claim_unanchored"),
     (whole("SYNDOC_A_20260201", " ".join(["word"] * 401)), "claim_malformed"),
     (whole("SYNDOC_A_20260201", ""), "claim_malformed"),
+    # scorer 5.2.2: the claim-level `citations` list is removed; a claim carrying it is malformed
+    ({**whole("SYNDOC_A_20260201", "Quarterly revenue was $4,210 million."),
+      "citations": [whole("SYNDOC_A_20260201", "x")]}, "claim_malformed"),
 ]
 
 
@@ -146,6 +153,15 @@ def test_each_rule(unit: Path, case: int) -> None:
     claim, expected = CASES[case]
     got = _checker(unit, [claim])
     assert got == ({} if expected is None else {0: {expected}})
+
+
+def test_a_claim_carrying_citations_says_why_it_is_malformed(unit: Path) -> None:
+    claim = {**whole("SYNDOC_A_20260201", "Revenue was $4,210 million."),
+             "citations": [whole("SYNDOC_A_20260201", "Revenue was $4,210 million.")]}
+    [finding] = [f for f in check_claim_rules(answer([claim]), unit, token_counter=words)
+                 if f.entity_id == "SYN-A"]
+    assert (finding.code, finding.claim_index) == ("claim_malformed", 0)
+    assert "citations" in finding.message and "5.2.2" in finding.message
 
 
 def test_a_task_citation_is_checked_like_the_scorer(unit: Path) -> None:
@@ -204,7 +220,7 @@ def test_checker_and_scorer_agree_claim_by_claim(unit: Path) -> None:
         if reasons:
             scorer.setdefault(texts.index(fc["claim"]), set()).update(reasons)
     assert checker == scorer
-    assert len(scorer) == 8  # positive control: the planted false claims are there on both sides
+    assert len(scorer) == 11  # positive control: the planted false claims are there on both sides
     preview = claim_penalty_preview(ans, unit, token_counter=words)
     assert preview["factor"] == outcome.diagnostics["faithfulness_factor"]
     assert preview["entities"] == 2 and 0.0 < preview["factor"] < 1.0
@@ -268,11 +284,10 @@ def _premise_findings(premise: str) -> list[str]:
 @pytest.mark.parametrize(
     "premise",
     [
-        pytest.param("https://example.invalid/zent/report", id="url-only"),
         pytest.param("units/", id="units-token"),
         pytest.param("canary", id="canary-token"),
         pytest.param("canary release", id="two-word-quote"),
-        pytest.param("Filed at https://example.invalid/zent/report;", id="own-word-plus-url"),
+        pytest.param("Filed at https://example.invalid/units/report;", id="own-words-url-with-token"),
     ],
 )
 def test_a_short_or_url_premise_is_not_an_exempt_quote(premise: str) -> None:
@@ -284,3 +299,9 @@ def test_a_three_word_corpus_quote_with_a_url_is_exempt() -> None:
     assert _premise_findings("Zent filed at https://example.invalid/zent/report today.") == []
     assert _premise_findings("The canary release shipped.") == []
     assert "deny_list" in _premise_findings("The canary release shipped early.")
+
+
+def test_a_url_only_premise_is_masked_not_refused() -> None:
+    """From 5.2.2 a URL is masked, not refused: a URL alone is not a quote, but it carries no
+    listed token, so nothing is refused."""
+    assert _premise_findings("https://example.invalid/zent/report") == []

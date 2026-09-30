@@ -272,7 +272,9 @@ def test_span_used_by_the_shared_fixture_is_short() -> None:
     assert len(SPAN) < FIGURE_SPAN_CAP
 
 
-def test_the_span_cap_reaches_the_scorer(tmp_path: pathlib.Path) -> None:
+def test_a_citation_over_the_cap_is_false(tmp_path: pathlib.Path) -> None:
+    """5.2.2: a claim citing a span over the published 8,000-character
+    cap is false whatever it states, a verbatim quote of the span included."""
     from .synthetic import PRE_CUTOFF_DOC, _doc, build_unit
 
     text = FILLER + " revenue of $7.4 billion here"
@@ -290,7 +292,10 @@ def test_the_span_cap_reaches_the_scorer(tmp_path: pathlib.Path) -> None:
             claim["span_end"] = len(text)
     outcome = _score(tmp_path, unit, answer, TextJudge())
     got = {c["claim"]: tuple(c["reasons"]) for c in outcome.diagnostics["false_claims"]}
-    assert got == {"Revenue was $7.4 billion.": ("unanchored",)}
+    assert got == {
+        "Revenue was $7.4 billion.": ("over_cap",),
+        "revenue of $7.4 billion here": ("over_cap",),
+    }
 
 
 # --- optional: a verbatim quote is never put to the contradiction check --------------------------

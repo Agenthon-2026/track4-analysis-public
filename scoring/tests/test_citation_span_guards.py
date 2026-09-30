@@ -15,6 +15,7 @@ span, so a figure the judge never saw could anchor a claim. Both now read the on
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import pathlib
 from typing import Any
@@ -35,23 +36,31 @@ CLAIM = "Revenue was $5.2 billion"
 
 
 def _aligned(citations: list[tuple[int, int]], claim: str = CLAIM) -> Any:
+    """An aligned unit whose one claim carries these citations.
+
+    From scorer 5.2.2 a participant claim cites one span through its own offsets (the
+    claim-level `citations` list is removed), so the claim is aligned in that shape and its
+    citations are then set on the aligned `Claim` directly: these tests exercise the claim
+    evaluator's per-citation guards, which read every citation a `Claim` holds.
+    """
     answer = answer_for(entities=ROSTER, claim_text=claim)
     first = answer["entity_predictions"][0]["claims"][0]
-    # One claim carrying every citation (the explicit `citations[]` shape).
-    answer["entity_predictions"][0]["claims"] = [
-        {
-            "claim": claim,
-            "citations": [
-                {"doc_id": first["doc_id"], "span_start": start, "span_end": end}
-                for start, end in citations
-            ],
-        }
-    ]
-    return align_predictions(
+    first["span_start"], first["span_end"] = citations[0]
+    aligned = align_predictions(
         answer,
         EntityRoster(entity_ids=ROSTER),
         target_type="classification",
         interval_level=0.90,
+    )
+    cites = tuple(
+        {"doc_id": first["doc_id"], "span_start": start, "span_end": end}
+        for start, end in citations
+    )
+    [only] = aligned.claims_by_entity[0]
+    return dataclasses.replace(
+        aligned,
+        claims_by_entity=((dataclasses.replace(only, citations=cites),),),
+        citations_by_entity=(cites,),
     )
 
 
@@ -191,7 +200,8 @@ def test_a_figure_outside_the_judged_window_anchors_on_the_whole_span_and_the_ju
 ):
     # The window ends before "$5.2 billion": the judge never sees the figure. From 5.2.0 (the
     # every-figure rule) figures are checked against the WHOLE cited span, so the claim is anchored;
-    # the judge still reads only its window.
+    # the judge still reads only a window of it. From 5.2.2 that is the window sharing the most
+    # claim words, here the one that holds the figure.
     window = TEXT.index("$5.2")
     judge = WindowJudge(window)
     report = evaluate_claims(
@@ -203,7 +213,10 @@ def test_a_figure_outside_the_judged_window_anchors_on_the_whole_span_and_the_ju
         contradiction_bar=0.9,
     )
     assert [v.status for v in report.verdicts] == ["neutral"]
-    assert judge.calls == [(TEXT[:window], CLAIM)]
+    ((premise, hypothesis),) = judge.calls
+    assert (
+        hypothesis == CLAIM and premise != TEXT[:window] and "$5.2 billion" in premise
+    )
     assert report.window_cut_citation_count == 1
 
 
