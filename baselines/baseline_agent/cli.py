@@ -35,16 +35,17 @@ from .retriever import retrieve
 
 
 def _target_type(task: dict) -> str | None:
-    """The unit's target type, read from BOTH published shapes of ``task.json``.
+    """The unit's target type, read from BOTH shapes of ``task.json``.
 
     ``SUBMISSION_CLI.md`` (the T4 row of the interface table, and contract invariant 7)
-    publishes it as a **top-level** ``target_type``; every ``task.json`` in this repo —
-    the exemplar and all ten practice units — declares it nested at ``target.type``.
-    Reading only one shape silently mislabels the other: a task in exactly the documented
-    top-level shape used to fall through to ``"classification"``, which on a regression or
-    ranking unit is ``t4.target_type_mismatch`` -> ``SCHEMA_INVALID_OUTPUT``, ``W = -0.27``.
+    documents it nested at ``target.type``, which every ``task.json`` in this repo uses —
+    the exemplar and all ten practice units. Earlier versions of that document described a
+    flat top-level ``target_type``, so the baseline reads that shape too. Reading only one
+    shape silently mislabels the other: a task in the flat shape used to fall through to
+    ``"classification"``, which on a regression or ranking unit is
+    ``t4.target_type_mismatch`` -> ``SCHEMA_INVALID_OUTPUT``, ``W = -0.27``.
 
-    The documented field wins where both are present. ``None`` means the task declares
+    The flat field wins where both are present. ``None`` means the task declares
     neither, and the caller then omits ``target_type`` from the answer instead of guessing.
     """
     nested = task.get("target")

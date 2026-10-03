@@ -297,7 +297,7 @@ checkable earns nothing, and stating specific true facts costs nothing.
 is to ask whether the cited passage entails the *prediction*, rendered as a sentence from your
 submitted values. That question has no right answer: every document in a unit's corpus predates
 the unit's cutoff, and your forecast is about what happens after it, so no passage can entail one.
-It is still computed and recorded for the organizer's review queue as `prediction_relevance`, and
+It is still computed and recorded as `prediction_relevance`, and
 it never affects your score.
 
 **Why contradiction, and why a high bar.** Before 5.2.0 a claim had to be *entailed* (two-way
@@ -587,18 +587,3 @@ conclude from the documents it was given, not what happened in the world.
 This tests whether the agent is genuinely reading the documents or using the corpus as a post-hoc
 citation exercise to justify a conclusion drawn from prior knowledge. An agent anchored on prior
 beliefs will contradict the corpus text in its own claims — a contradiction the NLI judge detects.
-
----
-
-## Manual review
-
-The automated NLI check is the primary faithfulness check. But it is not perfect. **Manual review**
-is triggered in two situations: (1) any submission that scores in the top 20% of the leaderboard
-gets human review to confirm the automated scoring did not miss a subtle faithfulness failure;
-(2) any submission where the NLI score for a key citation falls between 0.40 and 0.60 — within
-0.10 of the 0.5 per-citation threshold (the "borderline zone") — gets a human reader.
-
-Two finance-domain reviewers work independently. If they agree, their verdict stands. If they
-disagree, the track lead makes the final call. Reviewers can override an NLI score only when the
-NLI model is clearly wrong because of highly domain-specific financial terminology — and they must
-document the specific terminology issue.

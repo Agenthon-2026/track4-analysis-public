@@ -190,7 +190,7 @@ category, the models used (pinned versions), and their training cutoffs.
 | **T2 Time-Series Forecasting** | `forecast --panels /input/panels/ --text /input/text/ --asof <YYYY-MM-DD> --out /output/forecast.parquet` | `panels/` — multivariate time-series parquet files; `text/` — time-stamped text corpus (news, FOMC, macro releases); all timestamps must be ≤ `--asof` (gate g2 enforces both) | joint predictive distribution conforming to `forecast.schema.json`; sidecar `forecast_meta.json` required; **`forecast_rationale.md` required and never scored** (see T2 note below) |
 | **T3 Simulation** (single scenario) | `simulate --config /input/scenario.json --out /output/trace.parquet` | scenario config + ABIDES environment | message-level trace conforming to `sim_scenario.schema.json` + `events.json` (counts/timing) |
 | **T3 Simulation** (batched, family GB) | `simulate-batch --batch-dir /input/scenarios --out-dir /output` | `batch.json` — the sub-scenario roster; `scenarios/` — one config per sub-scenario. These units have **no** top-level `scenario.json`. | one output subdir per sub-scenario, each with `trace.parquet` + `events.json`, plus `batch_events.json` at the root of `--out-dir` |
-| **T4 Explainability** | `analyze --task /input/task.json --corpus /input/corpus/ --out /output/answer.json` | `task.json` — tabular dataset (rows = entities) + target column spec + `target_type` (classification/regression/ranking); `corpus/` — frozen evidence corpus | prediction + interval + citations per row conforming to `analysis.schema.json`; `target_type` in output must match card |
+| **T4 Explainability** | `analyze --task /input/task.json --corpus /input/corpus/ --out /output/answer.json` | `task.json` — tabular dataset (rows = entities) + a `target` block whose `target.type` is classification/regression/ranking; `corpus/` — frozen evidence corpus | prediction + interval + citations per row conforming to `analysis.schema.json`; if present, `target_type` in the output must match the unit's target type (`target.type` in task.json, `target_type` in card.toml) |
 
 > **T2 status (2026-08-20).** The unit-layout half of this is closed: `--panels` names the STAGED
 > unit's `panels/` directory. `stage_bundle.py` relocates root panels into `panels/` and its S6
@@ -242,9 +242,10 @@ everything else to `simulate`. Six of the public dev units (`t3-gbatch-*`) are b
    The harness checks text timestamps in addition to panel data timestamps. A document with a
    post-as-of date causes a `shared.leakage.cutoff_violation` failure label
    (`FailureLabel.LEAKAGE_CUTOFF` in `qfbench2_common.failure_labels`).
-7. **T4 target type:** the `target_type` field in `/input/task.json` (and matching `card.toml`) declares
-   the task as `classification`, `regression`, or `ranking`. The `answer.json` output must include a
-   matching `target_type` field. Mixed task types within one unit are not allowed.
+7. **T4 target type:** the `target.type` field in `/input/task.json` (a nested `target` block, not a flat
+   `target_type` key; mirrored as `target_type` under `[scoring.params]` in `card.toml`) declares
+   the task as `classification`, `regression`, or `ranking`. The `answer.json` output may include a
+   `target_type` field; if it does, it must match. Mixed task types within one unit are not allowed.
 8. **T1 deliverable dir + dual reward (QFBench heritage):** Track 1 *is* QFBench, so it inherits
    QFBench's conventions. The agent writes its deliverables to **`/app/output`**, which is what
    `--out` is set to and what the units' `instruction.md` and `checks/test_outputs.py` say. The

@@ -1,11 +1,11 @@
-"""The two published `task.json` shapes, and the no-retrieval-hit citation fallback.
+"""The two `task.json` shapes for the target type, and the no-retrieval-hit citation fallback.
 
 Both defects covered here were mutation-reverted against the full suite without turning a single
 test red, which is the reason this file exists.
 
-* **`target_type`.** `SUBMISSION_CLI.md` (the T4 interface row, and contract invariant 7) publishes
-  `target_type` as a **top-level** field of `/input/task.json`; every `task.json` in this repo
-  declares it nested at `target.type`. A baseline that reads one shape silently mislabels the
+* **`target_type`.** `SUBMISSION_CLI.md` (the T4 interface row, and contract invariant 7) documents
+  the target type nested at `target.type` in `/input/task.json`, as every `task.json` in this repo
+  declares it; earlier versions of that document described a flat top-level `target_type`. A baseline that reads one shape silently mislabels the
   other, and a mislabelled answer is not a small penalty: `align_predictions` refuses a declared
   type that disagrees with the trusted task as `t4.target_type_mismatch` ->
   `SCHEMA_INVALID_OUTPUT`, scored at the worst case `W = -0.27`.
@@ -37,7 +37,7 @@ CUTOFF = "2024-03-15"
 
 
 # --------------------------------------------------------------------------------------------
-# target_type: both published shapes
+# target_type: both task.json shapes (nested target.type, and the older flat target_type)
 # --------------------------------------------------------------------------------------------
 def _task(**overrides: object) -> dict:
     task = {
@@ -50,7 +50,7 @@ def _task(**overrides: object) -> dict:
 
 
 def test_the_documented_top_level_shape_is_read() -> None:
-    """SUBMISSION_CLI.md:107 / invariant 7 publish `target_type` at the top level."""
+    """Earlier versions of SUBMISSION_CLI.md described a flat top-level `target_type`."""
     assert _target_type(_task(target_type="regression")) == "regression"
 
 
@@ -80,7 +80,7 @@ def test_the_emitted_answer_carries_the_target_type_the_documented_shape_declare
 ) -> None:
     unit = _REPO / "units" / "t4-EXAMPLE-eps-beat"
     task = json.loads((unit / "task.json").read_text(encoding="utf-8"))
-    task.pop("target", None)  # exactly the shape SUBMISSION_CLI.md publishes
+    task.pop("target", None)  # the flat shape earlier versions of SUBMISSION_CLI.md described
     task["target_type"] = declared
     task_path = tmp_path / "task.json"
     task_path.write_text(json.dumps(task), encoding="utf-8")
