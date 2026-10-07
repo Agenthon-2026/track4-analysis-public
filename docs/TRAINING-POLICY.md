@@ -4,10 +4,11 @@ Track 4 permits external data for offline training within an otherwise permitted
 category. All task-specific features and labels used for fitting, adaptation, model selection
 or calibration must have been available by the relevant task cutoff. Evaluation inputs and
 citations remain limited to the supplied task and official frozen corpus. A narrow exception
-applies only to the general-purpose pretraining of explicitly approved Nemotron base revisions.
+applies only to the general-purpose pretraining of explicitly approved Nemotron base revisions
+and of the NeMo Retriever embedding models that the artifact policy permits.
 This clarification changes no scoring formula, judge, threshold, submission schema or category.
 
-**Policy revision: 2026-09-18.1.** Read alongside the [submission interface](../SUBMISSION_CLI.md)
+**Policy revision: 2026-10-07.1.** Read alongside the [submission interface](../SUBMISSION_CLI.md)
 and [competition data rules](https://www.agenthon.net/rules/).
 
 ## External training and historical cutoffs
@@ -45,11 +46,12 @@ model entries. The provenance record is reviewed documentation, not a new descri
 the current descriptor validator does not establish whether training data were eligible.
 Do not add a sidecar to the descriptor upload ZIP unless the upload instructions request it.
 
-## Exception limited to the approved Nemotron base
+## Exception limited to the approved Nemotron base and NeMo Retriever embeddings
 
-Only the exact organizer-approved Nemotron base revisions identified in the model-access
-release receive an exception for their general-purpose pretraining on historical tasks.
-This permits those base weights; it does not permit task-specific post-cutoff fitting,
-adaptation, model selection, calibration or additional data. Declaring another model's
-training cutoff does not qualify it for this exception. Use the approved revision list
-before treating any particular base as covered.
+The exact organizer-approved Nemotron base revisions identified in the model-access release
+receive an exception for their general-purpose pretraining on historical tasks. The NeMo
+Retriever embedding models that the [artifact policy](ARTIFACT-POLICY.md) permits receive the
+same exception, so they are usable on every task. This permits those weights; it does not permit
+task-specific post-cutoff fitting, adaptation, model selection, calibration or additional data.
+No other model qualifies: declaring another model's training cutoff does not qualify it for this
+exception. Use the approved revision list before treating any particular Nemotron base as covered.

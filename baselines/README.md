@@ -19,7 +19,7 @@ also runs under a local `--network=none` smoke run.
 |----------|--------|
 | Minimal runnable RAG baseline (`baseline_agent/`) | **Shipped & runnable** — pure standard library, no model weights; produces a schema-valid `answer.json`. This is the agent the quick-start commands invoke. |
 | TabPFN / gradient-boosting text-blind baselines | **Specification only — not yet released.** No code shipped; see the descriptions below for the intended design. |
-| Strong RAG baseline (`strong_rag_baseline/`) | **Scaffold shipped — runnable with `--mock` (a wiring check that grounds real citations, not a prediction) or any local OpenAI-compatible server.** BM25 span-chunk retrieval + house model via `$MODEL_ENDPOINT`, exact-span citation grounding. Quality acceptance (beats `baseline_agent/`, ≥0.80 faithfulness under the pinned judge) waits on the staging endpoint; see its README. Deviation from the sketch below: lexical-only retrieval (no dense index, no calibration head yet) — the restricted eval network cannot fetch embedding weights. |
+| Strong RAG baseline (`strong_rag_baseline/`) | **Scaffold shipped — runnable with `--mock` (a wiring check that grounds real citations, not a prediction) or any local OpenAI-compatible server.** BM25 span-chunk retrieval + house model via `$MODEL_ENDPOINT`, exact-span citation grounding. Quality acceptance (beats `baseline_agent/`, ≥0.80 faithfulness under the pinned judge) waits on the staging endpoint; see its README. Deviation from the sketch below: lexical-only retrieval (no dense index, no calibration head yet). Nothing can be downloaded at run time, and the only embedding weights a dense index may use are NeMo Retriever embedding models baked into the image at build time. |
 | Citation rail example (`guardrails_example/`) | **Shipped & runnable** — optional participant-side pre-submission checks (cited `doc_date <= cutoff`, well-formed spans) with an offline demo and illustrative NeMo Guardrails wiring. Advisory only; the organizer-side gates are the authority. Not a baseline agent — a rail you can bolt onto your own. |
 
 The shipped minimal baseline trades predictive strength for zero dependencies: lexical retrieval
@@ -70,7 +70,9 @@ intervals alone.
 **What it does.** For each entity row in the table, the agent:
 
 1. Uses the `corpus_ref` pointer from the entity row to retrieve relevant passages from the
-   frozen corpus using hybrid BM25 + dense retrieval (BAAI/bge-m3 or equivalent).
+   frozen corpus using hybrid BM25 + dense retrieval. The dense encoder must be a NeMo Retriever
+   embedding model baked into the image at build time; the
+   [artifact policy](../docs/ARTIFACT-POLICY.md) permits no other embedding model.
 2. Passes the top-K retrieved passages plus the entity's tabular features to an LLM with a
    structured prompt. In official scoring, the reader calls the organizer-hosted
    `$MODEL_ENDPOINT` with the supplied `$MODEL_NAME`. A bundled reader checkpoint or a model
@@ -124,7 +126,9 @@ Constraints:
 
 Reads all `*.json` files from `corpus/`, extracts `span_index` arrays (character-level passages),
 and builds a hybrid BM25 + dense dual-encoder index per entity row (using the `corpus_ref` field
-to scope each entity's retrieval).
+to scope each entity's retrieval). The dense encoder must be a NeMo Retriever embedding model baked
+into the image at build time, the only embedding model the
+[artifact policy](../docs/ARTIFACT-POLICY.md) permits.
 
 ### 2. Retriever
 
@@ -224,16 +228,19 @@ filter is not the same as being eligible.
 
 The model list below supports offline experiments and local checks. The reader alternatives
 are not models you may bundle for official scoring: every scored submission reads through the
-House model (see [`SUBMISSION_CLI.md`](../SUBMISSION_CLI.md)).
+House model (see [`SUBMISSION_CLI.md`](../SUBMISSION_CLI.md)). The retrieval encoder and TabPFN
+listed are not permitted in a scored image either: under the
+[artifact policy](../docs/ARTIFACT-POLICY.md), the only neural models a scored image may carry are
+NeMo Retriever embedding models baked into the image at build time.
 
 | Role | Model | Licence | Notes |
 |------|-------|---------|-------|
-| Retrieval encoder | `BAAI/bge-m3` | MIT | 1.5 B params; supports dense, sparse, and multi-vector retrieval |
+| Retrieval encoder | `BAAI/bge-m3` | MIT | Offline experiments only; not permitted in a scored image (use a NeMo Retriever embedding model). 1.5 B params; supports dense, sparse, and multi-vector retrieval |
 | Reader / Reasoner | `mistralai/Mistral-7B-Instruct-v0.3` | Apache 2.0 | Strong instruction following; fits in 8 GB VRAM at 4-bit |
 | Reader (alt) | `meta-llama/Meta-Llama-3-8B-Instruct` | Llama 3 Community | Slightly better on financial reasoning; requires licence acceptance |
 | NLI judge (local, 1 of 2) | `cross-encoder/nli-deberta-v3-large` | Apache-2.0 (weights) | Ensemble member. Use before submission to estimate faithfulness score offline |
 | NLI judge (local, 2 of 2) | `MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli` | MIT (weights) | Ensemble member. The scorer averages both; running only one does not reproduce it |
-| Tabular (text-blind) | `TabPFN` | MIT | Best for small cross-sections (< 1000 rows); classification only |
+| Tabular (text-blind) | `TabPFN` | MIT | Offline experiments only; a neural checkpoint, not permitted in a scored image. Best for small cross-sections (< 1000 rows); classification only |
 
 The two judge models carry **different** weights licences, and the licence on the data they were
 trained on differs again from the licence on the weights — one of the two training sets is

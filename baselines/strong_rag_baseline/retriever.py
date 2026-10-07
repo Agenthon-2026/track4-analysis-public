@@ -3,8 +3,9 @@
 BM25 (Okapi, k1=1.5, b=0.75) implemented in pure Python for determinism and
 zero dependencies. Dense retrieval is deliberately omitted: the eval sandbox's
 restricted network cannot fetch embedding weights at run time, so a lexical index
-keeps the baseline reproducible everywhere -- a dense index is permitted only if
-its weights are vendored into the image. Ties
+keeps the baseline reproducible everywhere. Under docs/ARTIFACT-POLICY.md the only
+embedding weights a dense index may use are NeMo Retriever embedding models baked
+into the image at build time; no other embedding model is permitted. Ties
 break by (doc_id, span_start) so ranking is stable across runs and platforms.
 
 Documents whose ``doc_date`` is missing or after the task ``cutoff_date`` are

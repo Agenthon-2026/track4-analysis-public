@@ -63,10 +63,10 @@ Local model example: `ollama serve` + `MODEL_ENDPOINT=http://localhost:11434/v1 
 
 **BM25 only, no dense retrieval** (deviation from the Baseline-3 sketch in `../README.md`): the
 eval sandbox's restricted network cannot fetch embedding weights at run time, so a lexical index
-keeps the agent reproducible everywhere. The binding constraint is build-time vendoring: nothing
-can be downloaded at run time, and bundling embedding weights for a dense index is an additional
-neural checkpoint under the [artifact policy](../../docs/ARTIFACT-POLICY.md), which needs
-organizer approval. The chunking already
+keeps the agent reproducible everywhere. Nothing can be downloaded at run time, and under the
+[artifact policy](../../docs/ARTIFACT-POLICY.md) the only embedding weights a dense index may use
+are NeMo Retriever embedding models baked into the image at build time; any other embedding model
+is an additional neural checkpoint, which the policy does not permit. The chunking already
 targets the corpus's natural citable units (rendered-table NOTES lines, per-span passages),
 which recovers much of what dense retrieval would add on these corpora.
 

@@ -176,6 +176,10 @@ verified automatically enforced image-size quota. The image-layer limit is a dif
 See the [image submission guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.1/docs/IMAGE-SUBMISSIONS.md)
 for anonymous public pulls and organizer-confirmed private mirrors.
 
+The Final cannot run an image that declares a Docker `VOLUME`, including one inherited from its base
+image. Such an upload is marked Failed when its run starts and does not use an attempt; remove the
+`VOLUME` (or choose another base image) and upload again.
+
 Write `answer.json` as UTF-8 without a byte-order mark. A byte-order mark or non-UTF-8 bytes
 fail: the scorer cannot read the file as JSON, and the unit gets the worst-case score. Only
 `/output/answer.json` is scored: an answer written anywhere else, even `/output/<dir>/answer.json`,
@@ -229,12 +233,13 @@ bearer, and `QFBENCH_NETWORK=restricted`; see [Calling the House route](https://
 without the eval network fall back to `--network=none`, so your agent must degrade gracefully
 (still emit a schema-valid `answer.json`) when model APIs are unreachable.
 
-**Local numerical artifacts.** The [Track 4 artifact policy](docs/ARTIFACT-POLICY.md) defines permitted non-neural models, calibration parameters and corpus-only retrieval assets, with disclosure and cutoff requirements. It does not authorize additional neural checkpoints.
+**Local numerical artifacts.** The [Track 4 artifact policy](docs/ARTIFACT-POLICY.md) defines permitted non-neural models, calibration parameters and corpus-only retrieval assets, with disclosure and cutoff requirements. It does not authorize additional neural checkpoints, with one exception: the NeMo Retriever embedding models that the [Track 4 starter pack](https://github.com/Agenthon-2026/Agenthon2026-public/blob/main/starter-packs/track4/AGENTS.md#accelerated-libraries-on-this-track) recommends, baked into the image at build time.
 
 **Offline training.** The [Track 4 training policy](docs/TRAINING-POLICY.md) permits eligible
 external training data within the existing artifact categories, requires cutoff-aware fitting,
-selection and calibration, and defines the narrow exception for approved Nemotron base
-pretraining. Evaluation inputs and citations stay within the official task and frozen corpus.
+selection and calibration, and defines the narrow pretraining exception for the approved
+Nemotron base and the permitted NeMo Retriever embedding models. Evaluation inputs and
+citations stay within the official task and frozen corpus.
 
 **Reproducibility.** Model versions must be pinned (dated snapshots), the training cutoff of
 every model must be disclosed in submission metadata, and temperature/seed pinned where the API
@@ -398,8 +403,10 @@ the two models. Neither is a calibrated probability on financial text.
 3. **Strong retrieval-augmented LLM-over-rows (`strong_rag_baseline/`, scaffold shipped)** —
    runnable with `--mock` or against any local OpenAI-compatible server via `$MODEL_ENDPOINT`.
    BM25 span-chunk retrieval with exact-span citation grounding. It deviates from the original
-   sketch: retrieval is lexical only — no dense index and no calibration head — because the
-   restricted evaluation network cannot fetch embedding weights. Quality acceptance against
+   sketch: retrieval is lexical only — no dense index and no calibration head. Nothing can be
+   downloaded at run time, and the only embedding weights a dense index may use are NeMo Retriever
+   embedding models baked into the image at build time (see the
+   [artifact policy](docs/ARTIFACT-POLICY.md)). Quality acceptance against
    `baseline_agent/` waits on the staging endpoint; see `baselines/README.md`.
 
 To run the shipped minimal baseline on the worked example, from the root of this repository:
