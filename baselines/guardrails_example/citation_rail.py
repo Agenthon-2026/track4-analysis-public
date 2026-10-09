@@ -65,7 +65,7 @@ class RailFinding:
     #   task_row | task_unchecked | claim_citations
     # check_claim_rules: claim_wrong_entity | claim_out_of_range | claim_malformed |
     #   claim_unanchored | claim_over_cap | claim_content_free |
-    #   claim_tokens_unchecked | unit_refused
+    #   claim_tokens_unchecked | unit_refused | claims_ignored
     # check_submitted_reasons: reasons_shape | reason_citation | cap_citation_chars |
     #   cap_answer_bytes | cap_reason_bytes | cap_evidence_bytes | deny_list | duplicate_reason
     code: str
@@ -795,13 +795,23 @@ def check_claim_rules(
     rule (roster, schema values, an unresolved, undated or post-cutoff citation); and
     ``claim_tokens_unchecked`` -- no judge tokenizer is installed, so the 400-token cap was not
     checked (install ``transformers`` and the judge models, or pass ``token_counter``).
+    ``claims_ignored`` (entity id, ``claim_index`` -1; scorer 5.3.0) -- the entity has more than
+    20 claims: only its first 20, in file order, are checked and counted, and the rest are
+    ignored (not judged, not counted, never false). No claim rule is reported for them.
 
     Needs this repository's ``qfbench2_track_analysis`` (run from the repo root)."""
     counter = judge_token_counter() if token_counter == "auto" else token_counter
-    claims, refused, _entities = _claim_report(answer, unit_dir, counter)
+    claims, refused, _entities, ignored = _claim_report(answer, unit_dir, counter)
     if refused:
         return refused
-    findings: list[RailFinding] = []
+    from qfbench2_track_analysis.alignment import MAX_CLAIMS_PER_ENTITY
+    findings: list[RailFinding] = [
+        RailFinding(
+            entity_id, -1, "claims_ignored",
+            f"{count} claim(s) after the first {MAX_CLAIMS_PER_ENTITY} about this entity are ignored "
+            "by the scorer: not checked, not judged and not counted (scorer 5.3.0)")
+        for entity_id, count in ignored.items()
+    ]
     position: dict[str, int] = {}
     nested = {
         (str(row.get("entity_id")), i)
@@ -832,7 +842,9 @@ def check_claim_rules(
 
 
 def _claim_report(answer: dict, unit_dir: str | Path, counter: TokenCounter | None):
-    """(the scorer's ClaimReport, [], roster count), or (None, [unit_refused finding], 0)."""
+    """(the scorer's ClaimReport, [], roster count, {entity: claims ignored by the cap}), or
+    (None, [unit_refused finding], 0, {}). The scorer's own `align_predictions` applies the
+    5.3.0 claims cap, so the report covers the counted claims only, as the scorer's does."""
     from qfbench2_track_analysis.alignment import align_predictions
     from qfbench2_track_analysis.codes import T4ParticipantFailure
     from qfbench2_track_analysis.scoring import (
@@ -853,13 +865,13 @@ def _claim_report(answer: dict, unit_dir: str | Path, counter: TokenCounter | No
             interval_level=params.interval_level,
         )
     except T4ParticipantFailure as failure:
-        return None, [RailFinding("unit", -1, "unit_refused", f"{failure.reason.value}: {failure}")], 0
+        return None, [RailFinding("unit", -1, "unit_refused", f"{failure.reason.value}: {failure}")], 0, {}
     report = corpus.embargo_report(aligned.all_citations(), ctx["_cutoff"])
     if not report.clean:
         return None, [RailFinding(
             "unit", -1, "unit_refused",
             f"{report.violation_count} citation(s) unresolved, undated or post-cutoff: the scorer "
-            "refuses the whole unit (see check_answer for which)")], 0
+            "refuses the whole unit (see check_answer for which)")], 0, {}
     _entity_bound_citations(corpus, aligned)
     claims = evaluate_claims(
         aligned,
@@ -872,7 +884,8 @@ def _claim_report(answer: dict, unit_dir: str | Path, counter: TokenCounter | No
         entity_names=unit_entity_names(ctx["_task"]),
         interval_level=params.interval_level,
     )
-    return claims, [], ctx["_roster"].count
+    ignored = {e: n for e, n in zip(aligned.entity_ids, aligned.ignored_claims_by_entity) if n}
+    return claims, [], ctx["_roster"].count, ignored
 
 
 def claim_penalty_preview(
@@ -881,11 +894,14 @@ def claim_penalty_preview(
     """The unit's faithfulness factor from the deterministic rules alone, by the scorer's own
     `ClaimReport.penalty_factor` (the soft floor ``1 - F/(F + min(T, 3E))``, E the roster count),
     so it equals the scorer's factor whenever no claim is contradicted. Returns
-    ``{"refused": bool, "claims": N, "false": F, "entities": E, "factor": float | None}``."""
+    ``{"refused": bool, "claims": N, "false": F, "entities": E, "factor": float | None,
+    "ignored": I}``. From scorer 5.3.0 N counts only the first 20 claims about each entity (the
+    claims the scorer checks and counts) and I is how many it ignores beyond them."""
     counter = judge_token_counter() if token_counter == "auto" else token_counter
-    claims, refused, entities = _claim_report(answer, unit_dir, counter)
+    claims, refused, entities, ignored = _claim_report(answer, unit_dir, counter)
     if refused:
-        return {"refused": True, "claims": None, "false": None, "entities": None, "factor": None}
+        return {"refused": True, "claims": None, "false": None, "entities": None, "factor": None,
+                "ignored": None}
     from qfbench2_track_analysis.scoring import DEFAULT_PENALTY_K
 
     false = sum(1 for v in claims.verdicts if any(r != "contradicted" for r in v.reasons))
@@ -895,6 +911,7 @@ def claim_penalty_preview(
         "false": false,
         "entities": entities,
         "factor": claims.penalty_factor(DEFAULT_PENALTY_K, entity_count=entities, judge_verdicts=False),
+        "ignored": sum(ignored.values()),
     }
 
 

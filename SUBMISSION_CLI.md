@@ -269,7 +269,7 @@ everything else to `simulate`. Six of the public dev units (`t3-gbatch-*`) are b
    contract above.)
 
 
-## How faithfulness is scored (Track 4, scorer 5.2.2)
+## How faithfulness is scored (Track 4, scorer 5.3.0)
 
 Faithfulness is a **per-claim penalty**, not an admission gate. Each claim in
 `entity_predictions[].claims` is either **false** or **neutral**, and each false claim costs a share of the unit. The unit's analysis score is multiplied by
@@ -290,6 +290,14 @@ malformed citation). These checks read the citations in `claims`. A citation in 
 does not resolve, is dated after the cutoff or points outside its document never refuses the
 unit; one that breaks the schema (a negative offset, a missing field, a `doc_id` that is not a
 string) does, like any schema error.
+
+**Only the first 20 claims about each entity count (from scorer 5.3.0).** For each entity, the scorer checks
+and counts only its first 20 claims, in the order they appear in `answer.json`. Further claims about that
+entity are ignored, not penalised: they are not checked, not put to the judge, and not counted in F or T.
+Faithfulness and the penalty factor are computed over the counted claims only; E is unchanged. The cap is per
+entity, not per unit. The answer as a whole is still checked: the schema applies to every claim, and a
+citation that does not resolve, is undated or is dated after the cutoff refuses the unit even in an ignored
+claim. Put your most important claims first.
 
 **`faithfulness_rubric` in `task.json` is a legacy field; ignore it.** Every unit's `task.json` still
 carries a `faithfulness_rubric` text. The public practice units' `card.toml` files carry one too;
@@ -312,8 +320,12 @@ claim whose only words are ordinary finance words such as forecast, quote, suppo
 available, "AAPL has no forecast.", is not content-free); or when the NLI ensemble's
 three-way probability that the cited passage **contradicts** the claim exceeds `contradiction_bar` = 0.9. A passage longer than the judge's
 window (about 500 tokens) is judged on the window that shares the most words with the claim.
-The Development board runs without the NLI contradiction check. The citation checks (wrong entity, offsets out of range), the figure check (from 5.2.2, numbers inside a web address are not figures) and the three claim rules added in 5.2.2 (a citation over 8,000 characters, a content-free claim and a claim that carries a `citations` key are false) are deterministic, so they apply on Development and in the Final alike. Run the local checker (`check_claim_rules` in
-`baselines/guardrails_example/citation_rail.py`) before you write `answer.json`.
+From scorer 5.3.0 the Development board scores with the same NLI judge as the Final, contradiction check
+included. Run the local checker
+(`check_claim_rules` in `baselines/guardrails_example/citation_rail.py`) before you write `answer.json`: it
+applies every rule except the contradiction check, which needs the models (`python faithfulness/judge.py
+--answer <answer.json> --unit <unit-dir>` runs it; add `--cache-dir <dir>` to say where the two judge models
+are, or are downloaded to, when the default `/model-cache` is not on your machine).
 Every other claim is neutral: it is never charged, and it earns nothing here. `penalty_k` = 1
 (the power the factor is raised to), `contradiction_bar` = 0.9 and the cap of 3 × E
 other claims are fixed scorer constants.

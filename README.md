@@ -344,6 +344,10 @@ that cost, and a unit with no false claims is not penalised. Per **claim** the c
    **false**; otherwise it is neutral. A word-for-word quote of a cited span is not put to the
    judge.
 
+From scorer 5.3.0 only the first 20 claims about each entity are checked and counted (see "Scoring formula");
+the check prints how many it ignored. From scorer 5.3.0 the Development board scores with the same NLI judge as the Final, contradiction check
+included.
+
 **The hypothesis is your claim; the premise is the passage you cited.** Quote it, paraphrase it,
 or state what it shows, with the figures it carries. A claim that is neutral is never charged and
 earns nothing here; whether your evidence supports your forecast is scored by reasoning grading.
@@ -423,7 +427,7 @@ python baselines/baseline_agent.py \
 
 ## Scoring formula
 
-Scorer 5.2.2. For a unit that passes the structural checks (schema, roster, citations resolved
+Scorer 5.3.0. For a unit that passes the structural checks (schema, roster, citations resolved
 and dated on or before the cutoff):
 
 ```
@@ -431,6 +435,14 @@ composite = w_acc × predictive_quality + w_cal × interval_quality
 score     = composite × (1 − F / (F + min(T, 3 × E)))
             F = false claims, T = other claims, E = entities in the unit; no false claims -> × 1
 ```
+
+**Only the first 20 claims about each entity count (from scorer 5.3.0).** For each entity, the scorer checks
+and counts only its first 20 claims, in the order they appear in `answer.json`. Further claims about that
+entity are ignored, not penalised: they are not checked, not put to the judge, and not counted in F or T.
+Faithfulness and the penalty factor are computed over the counted claims only; E is unchanged. The cap is per
+entity, not per unit. The answer as a whole is still checked: the schema applies to every claim, and a
+citation that does not resolve, is undated or is dated after the cutoff refuses the unit even in an ignored
+claim. Put your most important claims first.
 
 Default weights: `w_acc = 0.70`, `w_cal = 0.30`; `interval_level = 0.90`. The faithfulness
 factor is described above and in `docs/CONCEPTS.md`, "Faithfulness". `interval_quality =

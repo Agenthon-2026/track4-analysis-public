@@ -49,6 +49,7 @@ import logging
 import math
 import os
 import pathlib
+import re
 import time as _time
 import urllib.error
 import urllib.request
@@ -74,6 +75,8 @@ __all__ = [
     "build_judge",
     "build_ensemble_judge",
     "judged_premise_text",
+    "bounded_premise",
+    "PREMISE_TOKENIZE_WORDS",
     "score_claim",
     "AnswerCheck",
     "ClaimCheck",
@@ -187,6 +190,56 @@ DEFAULT_ENTAILMENT_LABEL: str = "entailment"
 # The judged window
 # ---------------------------------------------------------------------------
 
+#: Scorer 5.3.0: a premise with more than this many words is cut after its this-many-th word
+#: BEFORE it is tokenized (`bounded_premise`). The judge reads at most its tokenizer window (512
+#: tokens with the hypothesis), and every counted word is at least one token, so the cut prefix
+#: still fills the window four times over: the pipeline keeps exactly the same tokens, and the
+#: text past the cut, which it would truncate away, is never tokenized. Before 5.3.0 a cited
+#: whole document (hundreds of thousands of characters) was tokenized in full on every call.
+PREMISE_TOKENIZE_WORDS = 2048
+
+#: A word for the cut: a run of characters between ASCII spaces, tabs and line breaks that holds at
+#: least one ASCII letter or digit, so no normalisation can turn it into zero tokens.
+_RUN = re.compile(r"[^ \t\n\r]+")
+_ALNUM = re.compile(r"[A-Za-z0-9]")
+
+
+def bounded_premise(tokenizer: Any, premise: str, hypothesis: str) -> str:
+    """`premise`, cut after its `PREMISE_TOKENIZE_WORDS`-th word when it is longer (5.3.0).
+
+    The cut is made only where it cannot change what the judge reads:
+
+    * the tokenizer window is at most `PREMISE_TOKENIZE_WORDS` tokens, so the kept words alone
+      overflow it and the pipeline's ``only_first`` truncation cuts inside the kept prefix;
+    * the cut falls at a word end, so every token before it is the token the whole premise
+      gives (tokens never span the ASCII whitespace the words are split on);
+    * the hypothesis leaves room for at least one premise token. When it does not, the pipeline's
+      "too short" fallback reads the WHOLE premise untruncated, so nothing is cut here.
+
+    Without a tokenizer (a stand-in pipeline) the premise is returned unchanged; the pipeline's
+    own truncation applies either way, so this is a speed step, never a scoring one. Measured
+    equal token ids on long real filings and on synthetic dumped documents.
+    """
+    if tokenizer is None or not premise:
+        return premise
+    limit = int(getattr(tokenizer, "model_max_length", 0) or 0)
+    if not 0 < limit < PREMISE_TOKENIZE_WORDS:
+        return premise
+    end = None
+    counted = 0
+    for run in _RUN.finditer(premise):
+        if _ALNUM.search(run.group()):
+            counted += 1
+            if counted == PREMISE_TOKENIZE_WORDS:
+                end = run.end()
+                break
+    if end is None or end >= len(premise):
+        return premise
+    room = len(tokenizer(hypothesis, add_special_tokens=False)["input_ids"])
+    if room + int(tokenizer.num_special_tokens_to_add(pair=True)) >= limit:
+        return premise
+    return premise[:end]
+
 
 def judged_premise_text(tokenizer: Any, premise: str, hypothesis: str) -> str:
     """The prefix of `premise` the zero-shot pipeline reads beside `hypothesis`.
@@ -206,13 +259,19 @@ def judged_premise_text(tokenizer: Any, premise: str, hypothesis: str) -> str:
 
     TODO(next scorer version): cap the claim's token length so the "too short" fallback, where
     the judge reads a sequence longer than its window, cannot be reached. Out of scope for 5.1.1.
+
+    5.3.0: a premise far longer than the window is first cut by `bounded_premise`, which keeps
+    every token the window holds, so the text returned is unchanged and the rest of a long
+    document is not tokenized.
     """
+    whole_premise = premise
+    premise = bounded_premise(tokenizer, premise, hypothesis)
     limit = int(tokenizer.model_max_length)
     whole = tokenizer(
         [[premise, hypothesis]], add_special_tokens=True, truncation=False
     )
     if len(whole["input_ids"][0]) <= limit:
-        return premise
+        return whole_premise
     try:
         kept = tokenizer(
             [[premise, hypothesis]],
@@ -222,7 +281,7 @@ def judged_premise_text(tokenizer: Any, premise: str, hypothesis: str) -> str:
         )
     except Exception as exc:  # the pipeline catches exactly this and does not truncate
         if "too short" in str(exc):
-            return premise
+            return whole_premise
         raise
     ends = [
         end
@@ -404,12 +463,16 @@ class DeBERTaNLIJudge:
         # Keep the retained two-way normalization explicit. The pinned Transformers
         # single-candidate path also uses it when multi_label=False; that flag does not
         # turn this into a three-way probability or a constant 1.0.
-        result = pipe(
-            sequences=premise,
-            candidate_labels=[hypothesis],
-            hypothesis_template="{}",
-            multi_label=True,
-        )
+        #
+        # 5.3.0: the pipeline's own three stages, as its ``__call__`` runs them for one input
+        # (``preprocess`` -> ``forward`` -> ``postprocess``), so the score is byte-identical; the
+        # premise is cut first where the cut cannot change the tokens (`bounded_premise`), and
+        # the inputs reach the device in one transfer (`_to_device`).
+        outputs = [
+            pipe.forward(self._to_device(inputs))
+            for inputs in self._encode(premise, hypothesis)
+        ]
+        result = pipe.postprocess(outputs, multi_label=True)
 
         # result is a dict: {"labels": [...], "scores": [...], "sequence": ...}
         entailment_score = float(result["scores"][0])
@@ -422,6 +485,49 @@ class DeBERTaNLIJudge:
         )
 
         return entailment_score
+
+    def _encode(self, premise: str, hypothesis: str) -> list[dict[str, Any]]:
+        """Tokenize on the CPU: the pipeline's own ``preprocess`` (``[CLS] premise [SEP]
+        hypothesis [SEP]``, ``only_first`` truncation, the "too short" fallback) over the premise
+        as `bounded_premise` cuts it (5.3.0), which keeps every token the window holds."""
+        pipe = self._load()
+        premise = bounded_premise(getattr(pipe, "tokenizer", None), premise, hypothesis)
+        return list(
+            pipe.preprocess(
+                premise, candidate_labels=[hypothesis], hypothesis_template="{}"
+            )
+        )
+
+    def _to_device(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        """The model inputs on the judge's device in ONE host-to-device transfer (5.3.0).
+
+        On the CPU (``device == -1``) the inputs are returned as they are. On the GPU the token
+        tensors (input ids, attention mask, token type ids: one row each, one dtype) are stacked
+        on the host, copied once, and split back into views on the device, so the pipeline's
+        own per-tensor placement in ``forward`` finds them already there and copies nothing.
+        Values are unchanged; tensors that do not share a shape and dtype are copied one by one.
+        """
+        if self.device == -1:
+            return inputs
+        import torch
+
+        names = [k for k, v in inputs.items() if isinstance(v, torch.Tensor)]
+        if not names:
+            return inputs
+        target = torch.device("cuda", self.device)
+        tensors = [inputs[k] for k in names]
+        out = dict(inputs)
+        same = all(
+            t.dtype == tensors[0].dtype and t.shape == tensors[0].shape for t in tensors
+        )
+        if same and tensors[0].dim() == 2 and tensors[0].shape[0] == 1:
+            moved = torch.cat(tensors, dim=0).to(target)
+            for index, name in enumerate(names):
+                out[name] = moved[index : index + 1]
+        else:
+            for name in names:
+                out[name] = inputs[name].to(target)
+        return out
 
     def judged_premise(self, premise: str, hypothesis: str) -> str:
         """The prefix of `premise` this member's pipeline actually reads beside `hypothesis`.
@@ -467,10 +573,8 @@ class DeBERTaNLIJudge:
                 "exactly entailment / neutral / contradiction, so no three-way probability exists"
             )
         outputs = [
-            pipe.forward(inputs)
-            for inputs in pipe.preprocess(
-                premise, candidate_labels=[hypothesis], hypothesis_template="{}"
-            )
+            pipe.forward(self._to_device(inputs))
+            for inputs in self._encode(premise, hypothesis)
         ]
         if len(outputs) != 1:
             raise RuntimeError(
@@ -494,6 +598,26 @@ class DeBERTaNLIJudge:
     def contradiction(self, premise: str, hypothesis: str) -> float:
         """The model's three-way P(contradiction) for the pair (see :meth:`three_way`)."""
         return self.three_way(premise, hypothesis)[2]
+
+    def move_to_cuda(self) -> str:
+        """Move the LOADED pipeline to the first CUDA GPU (scorer 5.3.0); return its weight dtype.
+
+        The pipeline is loaded first (on the CPU, each checkpoint in its stored dtype: the
+        MoritzLaurer member in float16, the cross-encoder member in float32), then its model is
+        moved and the pipeline's device set, so the pipeline's own ``preprocess``/``forward``
+        place the inputs on the GPU. Nothing is cast: ``Module.to(device)`` keeps every dtype.
+        Measured on the pinned pair, CPU and GPU agree to about 1.3e-4 in P(contradiction).
+        Setting ``device`` before loading is not used: a GPU-built pipeline is not shown to load
+        the same dtypes.
+        """
+        import torch
+
+        pipe = self._load()
+        target = torch.device("cuda:0")
+        pipe.model.to(target)
+        pipe.device = target
+        self.device = 0
+        return str(next(pipe.model.parameters()).dtype)
 
     def __repr__(self) -> str:
         """Return a concise representation showing the model ID and device."""
@@ -880,15 +1004,50 @@ def _collect_claims(answer_data: dict[str, Any]) -> list[dict[str, Any]]:
     got a passing-looking run that had examined nothing.
 
     The top-level form is still accepted so a hand-written legacy file keeps working.
+
+    Scorer 5.3.0: only the claims the scorer checks, the first `MAX_CLAIMS_PER_ENTITY` of each
+    entity in file order (`_ignored_claim_count` counts the rest).
     """
+    from qfbench2_track_analysis.alignment import MAX_CLAIMS_PER_ENTITY
+
     claims: list[dict[str, Any]] = []
     for entity in answer_data.get("entity_predictions") or []:
         if isinstance(entity, dict):
             claims.extend(
-                c for c in (entity.get("claims") or []) if isinstance(c, dict)
+                c
+                for c in (entity.get("claims") or [])[:MAX_CLAIMS_PER_ENTITY]
+                if isinstance(c, dict)
             )
     claims.extend(c for c in (answer_data.get("claims") or []) if isinstance(c, dict))
     return claims
+
+
+def _ignored_claim_count(answer_data: dict[str, Any]) -> int:
+    """Claims after the first `MAX_CLAIMS_PER_ENTITY` of an entity, which the scorer ignores."""
+    from qfbench2_track_analysis.alignment import MAX_CLAIMS_PER_ENTITY
+
+    return sum(
+        max(0, len(entity.get("claims") or []) - MAX_CLAIMS_PER_ENTITY)
+        for entity in answer_data.get("entity_predictions") or []
+        if isinstance(entity, dict) and isinstance(entity.get("claims"), list)
+    )
+
+
+def claims_banner(
+    answer_data: dict[str, Any], roster_count: int, answer: str, unit_name: str
+) -> str:
+    """The local check's first line: the claims it checks (the scorer's counted claims), the
+    roster size, and how many claims the cap ignores when there are any (scorer 5.3.0)."""
+    ignored = _ignored_claim_count(answer_data)
+    note = (
+        f"; {ignored} claim(s) after the first 20 about an entity are ignored"
+        if ignored
+        else ""
+    )
+    return (
+        f"Scoring {len(_collect_claims(answer_data))} claim(s) for {roster_count} roster "
+        f"entit(y/ies) from {answer!r} against unit {unit_name!r}{note}"
+    )
 
 
 def build_unit_context(unit_dir: str | os.PathLike[str]) -> dict[str, Any]:
@@ -955,6 +1114,9 @@ class AnswerCheck:
     #: False when the judge cannot answer the contradiction question (the served backend returns only two-way
     #: entailment): only the deterministic reasons were checked, so the preview is NOT a production reading.
     contradiction_applied: bool = True
+    #: Scorer 5.3.0: claims after the first 20 about an entity, which the scorer ignores (not
+    #: checked, not judged, not counted); `claims` holds only the counted ones.
+    ignored_claim_count: int = 0
 
     @property
     def rankable(self) -> bool:
@@ -1070,6 +1232,7 @@ def check_answer(
         false_count=verdicts.false_count,
         roster_count=roster.count,
         contradiction_applied=verdicts.contradiction_applied,
+        ignored_claim_count=aligned.ignored_claim_count,
     )
 
 
@@ -1200,10 +1363,11 @@ if __name__ == "__main__":
             raise SystemExit(2) from fault
 
         roster_count = unit_ctx["_roster"].count
-        parsed_claims = len(_collect_claims(answer_data))
         print(
-            f"\nScoring {parsed_claims} claim(s) for {roster_count} roster entit(y/ies) from "
-            f"{args.answer!r} against unit {unit_ctx['unit_dir'].name!r}"
+            "\n"
+            + claims_banner(
+                answer_data, roster_count, args.answer, unit_ctx["unit_dir"].name
+            )
         )
         print("-" * 60)
 
@@ -1237,6 +1401,11 @@ if __name__ == "__main__":
             f"\nFalse claims: {result.false_count} of {result.claim_count}; "
             f"faithfulness factor (multiplies the unit's score): {result.penalty_factor:.4f}"
         )
+        if result.ignored_claim_count:
+            print(
+                f"Ignored: {result.ignored_claim_count} claim(s) after the first 20 about an "
+                "entity (not checked, not judged, not counted)."
+            )
         if not result.contradiction_applied:
             print(
                 "Contradiction check: NOT APPLIED. This judge (the served backend) returns only two-way "

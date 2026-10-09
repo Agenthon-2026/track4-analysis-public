@@ -33,9 +33,10 @@ travel to the judge are never written to any sink from this module.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -47,6 +48,8 @@ from .codes import T4OrganizerFault
 
 __all__ = [
     "ENV_JUDGE_CACHE_DIR",
+    "ENV_JUDGE_DEVICE",
+    "JUDGE_DEVICES",
     "ENV_JUDGE_SPEC",
     "JUDGE_MODES",
     "JudgeProvenance",
@@ -56,7 +59,10 @@ __all__ = [
     "build_smoke_judge",
     "compute_cache_tree_digest",
     "load_judge_spec",
+    "resolve_judge_device",
 ]
+
+logger = logging.getLogger(__name__)
 
 #: Path to the organizer-authored judge artifact specification. There is NO default value: the
 #: model choice is a licensing decision and an unset variable must refuse, not guess.
@@ -64,6 +70,12 @@ ENV_JUDGE_SPEC = "QFBENCH2_T4_JUDGE_SPEC"
 
 #: Root of the pre-staged, read-only model cache whose tree digest is recorded in provenance.
 ENV_JUDGE_CACHE_DIR = "QFBENCH2_T4_MODEL_CACHE"
+
+#: Where the production judge runs (scorer 5.3.0): ``auto`` (the default: the GPU when torch sees
+#: one, else the CPU), ``cpu`` or ``cuda``. A speed setting, not part of the judge's identity, so
+#: it is not in the judge spec (whose keys are closed) and not in any provenance record.
+ENV_JUDGE_DEVICE = "QFBENCH2_T4_JUDGE_DEVICE"
+JUDGE_DEVICES = ("auto", "cpu", "cuda")
 
 JUDGE_MODES = ("production", "smoke")
 
@@ -313,13 +325,34 @@ def build_production_judge(
     `judge_builder` exists so a test can inject a constructed ensemble without model weights; it
     does **not** relax anything, because the spec, the revisions and the cache digest are still
     required and still verified. There is no environment variable that reaches it.
+
+    5.3.0: the default builder's judge is built ONCE per process and stays loaded (and on the
+    GPU) for the life of the process; every later call returns it, so a driver that calls
+    `build_verifier` per unit no longer reloads the weights per unit. The full cache digest is
+    checked at that first load and not again: hashing the files on disk later in the process
+    cannot protect weights already loaded in memory, which are what scores. A later call whose
+    key (spec digest, cache dir, device, model ids and revisions, digest check) differs from the
+    loaded judge's is an organizer fault, never a reuse of the loaded judge and never a second
+    load beside it.
     """
     spec = spec or load_judge_spec()
+    device = resolve_judge_device() if judge_builder is None else None
     resolved_cache = (
         str(cache_dir)
         if cache_dir is not None
         else os.environ.get(ENV_JUDGE_CACHE_DIR, spec.cache_dir)
     )
+    key: tuple[Any, ...] | None = None
+    if judge_builder is None:
+        key = _process_key(spec, resolved_cache, device, verify_cache)
+        if _PROCESS_JUDGES:
+            if key not in _PROCESS_JUDGES:
+                raise T4OrganizerFault(
+                    "this process already loaded the production NLI judge for a different spec, "
+                    "model cache, device or revisions. One scoring process scores with one judge; "
+                    "a second configuration in the same process is refused rather than reused."
+                )
+            return _PROCESS_JUDGES[key], _provenance(spec)
     if verify_cache:
         observed = compute_cache_tree_digest(resolved_cache)
         if observed != spec.cache_tree_digest:
@@ -328,11 +361,11 @@ def build_production_judge(
                 "are the ranking-critical artifact and they live outside the scoring image, so an "
                 "image digest does not cover them."
             )
-    builder = (
-        judge_builder if judge_builder is not None else _default_production_builder
-    )
     try:
-        judge = builder(spec, resolved_cache)
+        if key is None:
+            judge = judge_builder(spec, resolved_cache)
+        else:
+            judge = _default_production_builder(spec, resolved_cache, device=device)
     except T4OrganizerFault:
         raise
     except Exception as exc:
@@ -345,7 +378,13 @@ def build_production_judge(
         raise T4OrganizerFault(
             "the production judge builder returned no usable NLIJudge"
         )
-    return judge, JudgeProvenance(
+    if key is not None:
+        _PROCESS_JUDGES[key] = judge
+    return judge, _provenance(spec)
+
+
+def _provenance(spec: JudgeSpec) -> JudgeProvenance:
+    return JudgeProvenance(
         judge_mode="production",
         model_ids=spec.model_ids,
         model_revisions=dict(spec.model_revisions),
@@ -354,10 +393,87 @@ def build_production_judge(
     )
 
 
-def _default_production_builder(spec: JudgeSpec, cache_dir: str) -> Any:
-    """Load the pinned ensemble inside the organizer-fault construction boundary."""
+def _process_key(
+    spec: JudgeSpec, cache_dir: str, device: str | None, verify_cache: bool
+) -> tuple[Any, ...]:
+    """What identifies the process's loaded judge: the spec's digest, the cache directory, the
+    device, the model ids and revisions, and whether the cache digest was checked."""
+    spec_digest = digest_json(
+        {
+            "model_ids": list(spec.model_ids),
+            "model_revisions": dict(spec.model_revisions),
+            "tokenizer_digest": spec.tokenizer_digest,
+            "cache_tree_digest": spec.cache_tree_digest,
+            "cache_dir": spec.cache_dir,
+        }
+    )
+    return (
+        spec_digest,
+        str(Path(cache_dir).resolve()),
+        device,
+        spec.model_ids,
+        tuple(sorted(spec.model_revisions.items())),
+        verify_cache,
+    )
+
+
+def _cuda_available() -> bool:
+    """Whether torch sees a CUDA GPU. No torch means no GPU (the CPU load then reports why)."""
+    try:
+        import torch
+    except ImportError:
+        return False
+    return bool(torch.cuda.is_available())
+
+
+def resolve_judge_device(
+    requested: str | None = None,
+    *,
+    cuda_available: Callable[[], bool] | None = None,
+) -> str:
+    """The device the production judge runs on (scorer 5.3.0): ``"cuda"`` or ``"cpu"``.
+
+    Read from `ENV_JUDGE_DEVICE` (``auto``, ``cpu`` or ``cuda``; unset or empty is ``auto``).
+    ``auto`` is the GPU when torch sees one, else the CPU. ``cuda`` with no GPU is an organizer
+    fault: the host was configured for a GPU it does not have, and a silent CPU run would take
+    many times the scoring clock. Any other value is refused rather than guessed. The device is
+    a speed setting, not part of the judge's identity: it is logged and is in no provenance
+    record (CPU and GPU agree to about 1.3e-4 in P(contradiction) on the pinned pair).
+    """
+    raw = os.environ.get(ENV_JUDGE_DEVICE, "") if requested is None else requested
+    choice = raw.strip().lower() or "auto"
+    if choice not in JUDGE_DEVICES:
+        raise T4OrganizerFault(
+            f"{ENV_JUDGE_DEVICE}={raw!r} is not one of {list(JUDGE_DEVICES)}"
+        )
+    if choice == "cpu":
+        return "cpu"
+    available = (cuda_available or _cuda_available)()
+    if choice == "cuda" and not available:
+        raise T4OrganizerFault(
+            f"{ENV_JUDGE_DEVICE}=cuda asks for the GPU but torch sees no CUDA device on this "
+            "host. The judge is never moved to the CPU silently: set auto or cpu, or fix the GPU."
+        )
+    return "cuda" if available else "cpu"
+
+
+#: The production judge this process loaded, under its `_process_key` (at most one entry). The
+#: models stay loaded, and on the GPU, for the life of the process (5.3.0).
+_PROCESS_JUDGES: dict[tuple[Any, ...], Any] = {}
+
+
+def _default_production_builder(
+    spec: JudgeSpec, cache_dir: str, *, device: str | None = None
+) -> Any:
+    """Load the pinned ensemble inside the organizer-fault construction boundary.
+
+    5.3.0: on the device `resolve_judge_device` picks. Every member is loaded on the CPU in its
+    stored dtype and then moved once (`DeBERTaNLIJudge.move_to_cuda`), never cast.
+    """
     from faithfulness.judge import DeBERTaNLIJudge
 
+    if device is None:
+        device = resolve_judge_device()
     members = [
         DeBERTaNLIJudge(
             model_id=model_id,
@@ -371,6 +487,15 @@ def _default_production_builder(spec: JudgeSpec, cache_dir: str) -> Any:
     # DeBERTa judges retain their lazy-loading behavior.
     for member in members:
         member._load()
+    dtypes = [
+        member.move_to_cuda() if device == "cuda" else "loaded" for member in members
+    ]
+    logger.info(
+        "production NLI judge on %s (%d members%s)",
+        device,
+        len(members),
+        f", dtypes {dtypes}" if device == "cuda" else "",
+    )
     return WindowedEnsembleNLIJudge(members)
 
 

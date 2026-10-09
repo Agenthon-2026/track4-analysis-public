@@ -266,9 +266,16 @@ A claim is **false** when any one of these holds, checked in this order:
      words without a filler word do too ("AAPL has no forecast.", "No quotes were submitted.").
      The word lists are `CONTENT_FREE_META_WORDS` and `CONTENT_FREE_FILLER_ANCHORS` in
      `qfbench2_track_analysis/scoring.py`.
-   - The Development board runs without the NLI contradiction check. The citation checks (wrong entity, offsets out of range), the figure check (from 5.2.2, numbers inside a web address are not figures) and the three claim rules added in 5.2.2 (a citation over 8,000 characters, a content-free claim and a claim that carries a `citations` key are false) are deterministic, so they apply on Development and in the Final alike. Run the local checker
-     (`baselines/guardrails_example/citation_rail.check_claim_rules`) before you write
-     `answer.json`: it applies the same rules.
+   - From scorer 5.3.0 the Development board scores with the same NLI judge as the Final, contradiction check
+     included. Run the local checker (`baselines/guardrails_example/citation_rail.check_claim_rules`) before
+     you write `answer.json`: it applies every rule here except the contradiction check.
+   - **Only the first 20 claims about each entity count (from scorer 5.3.0).** For each entity, the scorer checks
+     and counts only its first 20 claims, in the order they appear in `answer.json`. Further claims about that
+     entity are ignored, not penalised: they are not checked, not put to the judge, and not counted in F or T.
+     Faithfulness and the penalty factor are computed over the counted claims only; E is unchanged. The cap is per
+     entity, not per unit. The answer as a whole is still checked: the schema applies to every claim, and a
+     citation that does not resolve, is undated or is dated after the cutoff refuses the unit even in an ignored
+     claim. Put your most important claims first.
 5. **Contradicted by its passage.** For every other claim the NLI judge reads each cited passage
    (the premise) against **your `claim` text** (the hypothesis) and returns the three-way
    probability that the passage **contradicts** the claim, averaged over the ensemble's two

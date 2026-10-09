@@ -113,6 +113,27 @@ only function and evidence/meta words) is false and is not put to the judge; a c
 over `FIGURE_SPAN_CAP` characters is false; and a span longer than the judge's window is judged on
 the window that shares the most claim words (`best_matching_window`). Numbers inside a web address,
 disguised ones included, are no longer read as figures (`numeric`).
+
+5.3.0 (adopted 2026-10-03) caps the claims and runs Development with the real judge:
+
+* Only the FIRST `MAX_CLAIMS_PER_ENTITY` (20) claims about each entity, in the order they appear
+  in ``answer.json``, are checked and counted. Further claims about that entity are ignored, not
+  penalised: no per-claim check runs on them, they are not judged, they are not counted in F or T,
+  and the recorded `prediction_relevance` diagnostic does not read their citations. The cap is
+  applied in `align_predictions`, before anything groups claims or citations per entity, so the
+  gate, the penalty, the diagnostic and the local checkers see the same claims. Faithfulness and
+  the penalty factor are computed over the counted claims only; E is unchanged. The answer as a
+  whole is still checked structurally: the schema, integer offsets and the citation date check
+  apply to every claim. The number ignored per entity is recorded in the operator diagnostics
+  (``ignored_claim_count``, ``ignored_claims_by_entity``).
+* The Development factory (`build_smoke_verifier`, which the platform driver runs for a
+  development-signed plan) builds the same pinned production judge as `build_verifier` whenever a
+  judge spec is configured (`judge_factory.ENV_JUDGE_SPEC`), and then scores exactly as the Final
+  does, the contradiction check included. Its results stay non-rankable. On the scoring host (a
+  signed plan in the context) a missing judge spec is an organizer fault. With no judge configured
+  and no plan (a participant's machine) it is the lexical preview, as before.
+* The production judge runs on the GPU when one is present (`judge_factory.ENV_JUDGE_DEVICE`),
+  is built once per process, and no longer tokenizes text past its window. Scores are unchanged.
 """
 
 from __future__ import annotations
@@ -121,6 +142,7 @@ import hashlib
 import json
 import logging
 import math
+import os
 import pathlib
 import re
 import statistics
@@ -135,11 +157,22 @@ from qfbench2_common.scoring import faithfulness as F
 from qfbench2_common.taskcard import schema_path
 from qfbench2_common.verifier import GateResult, HierarchicalVerifier
 
-from .alignment import AlignedPredictions, EntityRoster, TARGET_TYPES, align_predictions
+from .alignment import (
+    MAX_CLAIMS_PER_ENTITY,
+    AlignedPredictions,
+    EntityRoster,
+    TARGET_TYPES,
+    align_predictions,
+)
 from .codes import T4OrganizerFault, T4ParticipantFailure, T4Reason
 from .corpus import CorpusIndex, parse_iso_date
 from .hypothesis import HypothesisSpec, prediction_claims
-from .judge_factory import JudgeProvenance, build_production_judge, build_smoke_judge
+from .judge_factory import (
+    ENV_JUDGE_SPEC,
+    JudgeProvenance,
+    build_production_judge,
+    build_smoke_judge,
+)
 from .numeric import FIGURE_RULES, claim_number_status, verbatim_quote
 
 __all__ = [
@@ -148,6 +181,7 @@ __all__ = [
     "DOMAIN_MIN",
     "FIGURE_SPAN_CAP",
     "LEADERBOARD_SORT",
+    "MAX_CLAIMS_PER_ENTITY",
     "SCORER_VERSION",
     "ClaimReport",
     "ClaimVerdict",
@@ -172,7 +206,7 @@ DOMAIN_MAX = 1.0
 
 #: Bumped whenever the composite, the gates or the evidence semantics change. Recorded in
 #: provenance so a leaderboard can be attributed to an implementation rather than to a repo state.
-SCORER_VERSION = "5.2.2"
+SCORER_VERSION = "5.3.0"
 
 #: Which figures of a claim its cited spans must carry. "every" (the whole cited span) is the
 #: 5.2.0 rule; "any" (the judge window) is the earlier rule. A switch for the measurement.
@@ -1534,6 +1568,15 @@ def evaluate_claims(
                 for span in whole
             ]
             window_cut += sum(1 for a, b in zip(whole, spans, strict=True) if a != b)
+            if any(len(span) > FIGURE_SPAN_CAP for span in whole):
+                # 5.2.2: a citation over the published 8,000-character
+                # cap is false, whatever the claim states: cite the passage, not the document.
+                # 5.3.0: checked before the figure check, which it overrides; the judge's cut
+                # above reads only the start of a long span (`bounded_premise`), never all of it.
+                verdicts.append(
+                    ClaimVerdict(entity_id, claim.text, "over_cap", 0.0, wrong, bad > 0)
+                )
+                continue
             rule = FIGURE_RULE if figure_rule is None else figure_rule
             if rule not in FIGURE_RULES:
                 raise T4OrganizerFault(
@@ -1553,13 +1596,6 @@ def evaluate_claims(
                 )
             else:
                 status = claim_number_status(claim.text, spans, submitted=submitted)
-            if any(len(span) > FIGURE_SPAN_CAP for span in whole):
-                # 5.2.2: a citation over the published 8,000-character
-                # cap is false, whatever the claim states: cite the passage, not the document.
-                verdicts.append(
-                    ClaimVerdict(entity_id, claim.text, "over_cap", 0.0, wrong, bad > 0)
-                )
-                continue
             if status == "unanchored":
                 verdicts.append(
                     ClaimVerdict(
@@ -2131,16 +2167,39 @@ def _claim_diagnostics(ctx: Mapping[str, Any]) -> dict[str, Any]:
     report = ctx.get("_claim_report")
     if isinstance(report, ClaimReport):
         out.update(report.diagnostics())
+    out.update(_ignored_claims(ctx))
     return out
+
+
+def _ignored_claims(ctx: Mapping[str, Any]) -> dict[str, Any]:
+    """5.3.0: the claims the per-entity cap ignored, as a total and per entity (only entities
+    with any). Counts and roster ids only. Empty before alignment ran (a refusal in g0-g2)."""
+    aligned = ctx.get("_aligned")
+    if not isinstance(aligned, AlignedPredictions):
+        return {}
+    per = dict(zip(aligned.entity_ids, aligned.ignored_claims_by_entity))
+    return {
+        "max_claims_per_entity": MAX_CLAIMS_PER_ENTITY,
+        "ignored_claim_count": aligned.ignored_claim_count,
+        "ignored_claims_by_entity": {k: v for k, v in per.items() if v},
+    }
 
 
 # --------------------------------------------------------------------------- #
 # Factories                                                                     #
 # --------------------------------------------------------------------------- #
 def _verifier(
-    ctx: dict[str, Any], provenance: JudgeProvenance, *, require_outcome: bool
+    ctx: dict[str, Any],
+    provenance: JudgeProvenance,
+    *,
+    require_outcome: bool,
+    rankable: bool = True,
 ) -> HierarchicalVerifier:
-    """Adapt `score_unit` to the shared `HierarchicalVerifier` gate/score contract."""
+    """Adapt `score_unit` to the shared `HierarchicalVerifier` gate/score contract.
+
+    `rankable=False` (the Development factory) stamps every result non-rankable whatever judge
+    scored it."""
+    stamp = provenance.rankable and rankable
     gates = [
         ("g0_integrity", _wrap(_g0_integrity)),
         ("g1_schema", _wrap(_g1_schema)),
@@ -2165,6 +2224,7 @@ def _verifier(
                 "faithfulness_gate_applied": scoring_ctx.get(
                     "_faithfulness_gate_applied", True
                 ),
+                **_ignored_claims(scoring_ctx),
                 "note": "no resolved outcome (public practice unit)",
             }
         parts = _apply_faithfulness_penalty(
@@ -2179,13 +2239,14 @@ def _verifier(
         )
         return {
             "score": clip_to_domain(_composite_value(parts)),
-            "rankable": provenance.rankable,
+            "rankable": stamp,
             "judge_mode": provenance.judge_mode,
             "faithfulness": scoring_ctx.get("_faithfulness"),
             "prediction_relevance": scoring_ctx.get("_prediction_relevance"),
             "faithfulness_gate_applied": scoring_ctx.get(
                 "_faithfulness_gate_applied", True
             ),
+            **_ignored_claims(scoring_ctx),
             "expected_entity_count": scoring_ctx["_roster"].count,
             "graded_entity_count": scoring_ctx["_aligned"].count,
             **(scoring_ctx.get("_naive_provenance") or {}),
@@ -2229,12 +2290,41 @@ def build_verifier(ctx: dict[str, Any]) -> HierarchicalVerifier:
 
 
 def build_smoke_verifier(ctx: dict[str, Any]) -> HierarchicalVerifier:
-    """The separately named non-rankable factory: lexical judge, `judge_mode="smoke"`.
+    """The separately named non-rankable factory: the Development board and the local preview.
 
-    Nothing in the production path falls back to this, and no environment variable selects it. It
-    exists so a participant can preview admissibility locally without model weights, and every
-    artifact it produces is stamped ``rankable=False``.
+    Every artifact it produces is stamped ``rankable=False``, and nothing in the production path
+    falls back to it.
+
+    5.3.0: the platform driver runs this factory for a development-signed plan, and Development
+    scores with the real NLI judge, as the Final does. So when the organizer's judge spec is
+    configured (`judge_factory.ENV_JUDGE_SPEC` is set, as in the scoring images), this builds the
+    same pinned production judge `build_verifier` builds and scores exactly as `build_verifier`
+    does, the contradiction check included; a configured judge that cannot be built is an
+    organizer fault, never a quiet fall back to the lexical judge. On the scoring host (the
+    platform driver passes a signed C1 plan as ``ctx["plan"]``) a missing judge spec is an
+    organizer fault too. With no judge configured and no plan (a participant's machine without the
+    weights) it is the lexical preview: `judge_mode="smoke"`, contradiction verdicts reported and
+    not charged (`faithfulness_gate_applied=False`).
     """
+    configured = bool(os.environ.get(ENV_JUDGE_SPEC, ""))
+    if ctx.get("plan") is not None and not configured:
+        # The scoring host: only the platform driver hands a factory a signed C1 plan (the same
+        # key `hydrate` reads the trusted roster and parameters from). A participant's tools never
+        # have one, so their lexical preview below is untouched.
+        raise T4OrganizerFault(
+            f"this Development scoring host has no NLI judge configured ({ENV_JUDGE_SPEC} is "
+            "unset) but the scoring context carries a signed evaluation plan. From scorer 5.3.0 "
+            "Development scores with the production judge, as the Final does; configure the judge "
+            "spec and model cache in the scoring image. The lexical preview is for participants' "
+            "own machines only."
+        )
+    if configured:
+        judge, provenance = build_production_judge()
+        ctx["judge"] = judge
+        ctx["judge_provenance"] = provenance
+        ctx["_require_judge_window"] = provenance.rankable
+        ctx["scorer_version"] = SCORER_VERSION
+        return _verifier(ctx, provenance, require_outcome=False, rankable=False)
     judge, provenance = build_smoke_judge()
     ctx["judge"] = judge
     ctx["judge_provenance"] = provenance

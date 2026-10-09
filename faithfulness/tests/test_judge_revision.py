@@ -40,8 +40,15 @@ def _record_loader(
     calls: list[dict[str, Any]] = []
 
     class Pipeline:
-        def __call__(self, **kwargs: Any) -> dict[str, Any]:
-            calls.append(kwargs)
+        # 5.3.0: `entail` runs the pipeline's own stages; one call is recorded per entail.
+        def preprocess(self, inputs: Any, **kwargs: Any) -> Any:
+            yield {"sequences": inputs, **kwargs}
+
+        def forward(self, inputs: Any) -> Any:
+            return inputs
+
+        def postprocess(self, outputs: Any, multi_label: bool = False) -> Any:
+            calls.append({**outputs[0], "multi_label": multi_label})
             return {"scores": [0.75]}
 
     def loader(**kwargs: Any) -> Pipeline:

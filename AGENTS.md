@@ -52,9 +52,13 @@ the role address the shipped unit cards carry in `author_email`: `qfbench@neurip
    It used to build no judge at all: `ctx.get("judge")` was `None` under the real driver, the
    faithfulness block was skipped, and `_score` read `ctx.get("_faithfulness", 1.0)` — a missing
    judge meant *perfect* faithfulness, and the gate the whole track exists for never ran. There is
-   now exactly one non-rankable factory, `build_smoke_verifier`, it is separately named, it stamps
-   `judge_mode="smoke"` and `rankable=False`, and **no environment variable reaches it**. Do not
-   add a fallback from one to the other; a missing judge is an organizer failure with no score.
+   now exactly one non-rankable factory, `build_smoke_verifier`, which the platform driver runs for
+   Development. It is separately named and always stamps `rankable=False`. With
+   `QFBENCH2_T4_JUDGE_SPEC` set it builds the same pinned production judge as `build_verifier` and
+   scores as the Final does; with a signed plan in the context and no spec it is an organizer
+   fault; with neither (a participant's machine) it uses the lexical preview judge and stamps
+   `judge_mode="smoke"`. Do not add a fallback from one to the other; a missing judge is an
+   organizer failure with no score.
    The shared `qfbench2-smoke` runner picks between them by NAME through
    `qfbench2_common.smoke.resolve_verifier_factory` — `--profile smoke` (default) takes
    `build_smoke_verifier`, `--profile production` takes `build_verifier` and nothing else — so
@@ -112,10 +116,12 @@ the role address the shipped unit cards carry in `author_email`: `qfbench@neurip
 - `qfbench2_track_analysis/` — the ONE Track-4 scoring implementation (do not change the gate
   names, the composite formula, the metric domain `[0.0, 1.0]` or the worst-case value
   `W = 0.0` without organizer review; W shows as -0.27 on the leaderboard, where
-  leaderboard = -0.27 + 1.27 × analysis). Current scorer: 5.2.2. Faithfulness is a per-claim
+  leaderboard = -0.27 + 1.27 × analysis). Current scorer: 5.3.0. Faithfulness is a per-claim
   penalty, not an admission gate: the composite is multiplied by the soft floor
   `1 - F/(F + min(T, 3E))` (F false claims, T the others, E the roster count), with k = 1 and a
-  contradiction bar of 0.9 as fixed constants. Every figure in a claim must appear in a span it
+  contradiction bar of 0.9 as fixed constants. Only the first 20 claims about each entity, in file order,
+  are checked and counted; later claims about that entity are ignored, not penalised (F and T count the
+  first 20 only). Development scores with the same judge as the Final. Every figure in a claim must appear in a span it
   cites (task-table values are cited with `doc_id: "task"`); entity names and tickers are exempt,
   a claim citing a span over 8,000 characters is false, a content-free claim (no figure, only
   evidence/meta words with a filler word about the evidence, or nothing but function words) is false, a claim over 400 judge tokens is malformed, a verbatim quote is

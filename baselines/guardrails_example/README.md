@@ -17,8 +17,8 @@ A third check, `check_submitted_reasons`, covers the optional `submitted_reasons
 reasoning grader reads: its shape, whether each citation resolves before the cutoff, the
 published caps, the deny list and content-duplicate reasons (see "Checking your reasons" below).
 
-A fourth, `check_claim_rules`, runs the scorer 5.2.2 **deterministic claim rules** on a whole
-answer with the scorer's own code (see "Checking your claims (scorer 5.2.2)" below). It is the
+A fourth, `check_claim_rules`, runs the scorer 5.3.0 **deterministic claim rules** on a whole
+answer with the scorer's own code (see "Checking your claims (scorer 5.3.0)" below). It is the
 only part of this rail that imports this repository's `qfbench2_track_analysis`; the other three
 are pure standard library.
 
@@ -66,7 +66,7 @@ and the span is checked against the task-table text the scorer builds
 citing entity's own row is `task_row` (the scorer counts that claim false, as a wrong-entity
 citation). Without `task=` such a citation is reported `task_unchecked`, never `unknown_doc`.
 
-## Checking your claims (scorer 5.2.2)
+## Checking your claims (scorer 5.3.0)
 
 ```python
 from baselines.guardrails_example.citation_rail import check_claim_rules
@@ -76,10 +76,11 @@ for finding in check_claim_rules(draft_answer, unit_dir):
 ```
 
 Run it before your agent writes `answer.json`, and fix every finding: each one is a claim the
-scorer counts as false. The Development board runs without the NLI contradiction check, but the
-claim rules this checker applies are deterministic, so they apply on Development and in the
-Final alike (from scorer 5.2.2 they include a citation over 8,000 characters and a content-free
-claim).
+scorer counts as false. The claim rules this checker applies are deterministic and apply on
+Development and in the Final alike; from scorer 5.3.0 both also apply the NLI contradiction check,
+which this checker does not run. Like the scorer, it checks only the first 20 claims about each
+entity, in file order; when an entity has more it reports one `claims_ignored` notice for that entity
+(claim index -1), and the later claims get no finding because the scorer ignores them.
 
 Run it from the repository root (it imports `qfbench2_track_analysis`). It hydrates the unit the
 way the scorer does and calls the scorer's own `evaluate_claims`, so its verdicts are the
@@ -94,6 +95,7 @@ reason a claim is false, and a false claim costs its share of the unit:
 | `claim_unanchored` | a figure no cited span carries (every figure, whole span; a word-for-word quote of a cited span passes; your scored values and the unit's own entity names and tickers are exempt) |
 | `claim_over_cap` | a citation spans more than 8,000 characters; the claim is false whatever it states (cite the passage, not the document) |
 | `claim_content_free` | no figure, nothing but function words and evidence/meta words, and either nothing but function words or a filler word about the evidence such as "evidence", "passage" or "cited" ("Pre-cutoff evidence selected for the submitted prediction."; "AAPL has no forecast." is contentful); the claim is false and is not put to the judge |
+| `claims_ignored` | (scorer 5.3.0) the entity has more than 20 claims; only its first 20, in file order, are checked and counted, the rest are ignored (not judged, not counted, never false). Not a false claim. |
 | `unit_refused` | the scorer refuses the whole unit before any claim rule (a missing, extra or repeated entity, a non-finite value, an unresolved, undated or post-cutoff citation); run `check_answer` to see which citation |
 | `claim_tokens_unchecked` | needs tokenizer: the judge's tokenizer is not installed here, so the 400-token cap was not checked. Install `transformers` and the judge models (nothing is downloaded by this check), or pass `token_counter=` |
 
@@ -136,7 +138,7 @@ The contract itself, with a worked example on the exemplar unit, is in
 ## What this rail does, and does NOT do
 
 It does: the date and shape rails on every claim citation (including `"task"` citations with
-`task=`); every deterministic claim rule of scorer 5.2.2 (`check_claim_rules`: wrong entity, out
+`task=`); every deterministic claim rule of scorer 5.3.0, including the 20-claims-per-entity cap (`check_claim_rules`: wrong entity, out
 of range, malformed including the 400-judge-token cap when the tokenizer is installed, a citation
 over 8,000 characters, every figure with the verbatim-quote pass and the name and ticker
 exemption, a content-free claim); and

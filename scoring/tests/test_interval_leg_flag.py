@@ -179,5 +179,6 @@ def test_the_scorer_version_is_adopted() -> None:
     # review fixes (test_scorer_5_1_2_fixes.py); 5.1.3 = the narrowed own-value exemption
     # (test_own_value_exemption.py); 5.2.0 = the per-claim faithfulness penalty
     # (test_claim_penalty.py); 5.2.1 = the interval leg capped by the prediction leg
-    # (test_interval_cap.py).
-    assert S.SCORER_VERSION == "5.2.2"
+    # (test_interval_cap.py); 5.3.0 = the claims cap and the GPU judge
+    # (test_claims_cap.py, test_judge_device.py).
+    assert S.SCORER_VERSION == "5.3.0"

@@ -252,11 +252,14 @@ def test_a_task_citation_in_a_reason_is_flagged_with_its_own_message() -> None:
 @pytest.mark.parametrize(("pad", "factor"), [(0, 1 - 1 / 2), (5, 1 - 1 / 7), (40, 1 - 1 / 7)])
 def test_the_preview_factor_is_the_soft_floor(unit: Path, pad: int, factor: float) -> None:
     """One false claim for SYN-A and one true claim for SYN-B, plus `pad` neutral claims for
-    SYN-A: padding dilutes the false claim only up to 3 x E = 6 claims in total (E = 2)."""
+    SYN-A: padding dilutes the false claim only up to 3 x E = 6 claims in total (E = 2). From
+    scorer 5.3.0 only SYN-A's first 20 claims count (pad 40: 19 neutral counted, 21 ignored)."""
     neutral = [whole("SYNDOC_A_20260201", f"Issuer A published results, note {chr(97 + i % 26)}.") for i in range(pad)]
     ans = answer([whole("SYNDOC_A_20260201", "Revenue was $9,999 million.")] + neutral)
     got = claim_penalty_preview(ans, unit, token_counter=words)
-    assert (got["false"], got["claims"], got["entities"]) == (1, pad + 2, 2)
+    counted = min(pad + 1, 20)
+    assert (got["false"], got["claims"], got["entities"]) == (1, counted + 1, 2)
+    assert got["ignored"] == pad + 1 - counted
     assert got["factor"] == pytest.approx(factor)
 
 

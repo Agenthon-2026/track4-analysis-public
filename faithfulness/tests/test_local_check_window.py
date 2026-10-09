@@ -74,14 +74,14 @@ def _loader(monkeypatch: pytest.MonkeyPatch) -> None:
                 },
             )()
 
-            def __call__(self, **__: Any) -> dict[str, Any]:
-                return {"scores": [0.75]}
-
             def preprocess(self, *_: Any, **__: Any) -> Any:
                 yield {}
 
             def forward(self, _: Any) -> dict[str, Any]:
                 return {"logits": Logits()}
+
+            def postprocess(self, *_: Any, **__: Any) -> dict[str, Any]:
+                return {"scores": [0.75]}
 
         return Pipeline()
 

@@ -35,6 +35,8 @@ from .codes import T4OrganizerFault, T4ParticipantFailure, T4Reason
 
 __all__ = [
     "CLAIM_TEXT_MAX_CHARS",
+    "DATE_CHECK_COVERS_IGNORED_CLAIMS",
+    "MAX_CLAIMS_PER_ENTITY",
     "NESTED_CITATIONS_KEY",
     "TARGET_TYPES",
     "AlignedPredictions",
@@ -51,6 +53,21 @@ __all__ = [
 #: the judge's time. Over the cap the claim is recorded as malformed and counts as unsupported;
 #: it never reaches the judge and it never refuses the unit by itself.
 CLAIM_TEXT_MAX_CHARS = 4000
+
+#: The claims cap (scorer 5.3.0): only the FIRST this-many claims about each entity, in the order
+#: they appear in `answer.json`, are checked and counted. Further claims about that entity are
+#: ignored, not penalised: they are not judged, they are not counted in F or T, no per-claim check
+#: runs on them, and the recorded `prediction_relevance` diagnostic does not read their citations.
+#: The cap is per entity, not per unit. It is applied here, in `align_predictions`, before anything
+#: groups claims or citations per entity, so every consumer (the gate, the penalty, the
+#: diagnostic and the local checkers) sees the same counted claims. The answer as a whole is still
+#: checked structurally: the schema and integer offsets apply to every claim, and so does the
+#: citation date check while `DATE_CHECK_COVERS_IGNORED_CLAIMS` is True.
+MAX_CLAIMS_PER_ENTITY = 20
+
+#: Whether the citation date check (an unresolved, undated or post-cutoff document refuses the
+#: whole unit) also reads the citations of the claims the cap ignores (5.3.0). When True it does.
+DATE_CHECK_COVERS_IGNORED_CLAIMS = True
 
 #: The claim-level citations list, removed in scorer 5.2.2: a claim cites one span of one
 #: document through its own `doc_id`, `span_start` and `span_end`. A claim that still carries
@@ -182,9 +199,16 @@ class AlignedPredictions:
     citations_by_entity: tuple[tuple[Mapping[str, Any], ...], ...]
     claim_texts_by_entity: tuple[tuple[str, ...], ...]
     #: The claims as the participant grouped them: each with its own text and its own
-    #: citations. `citations_by_entity` is the flattening of this, kept for the embargo and
-    #: entity checks, which are per citation.
+    #: citations. `citations_by_entity` is the flattening of this, kept for the entity check and
+    #: the `prediction_relevance` diagnostic, which are per citation. From 5.3.0 all three hold
+    #: only the COUNTED claims, the first `MAX_CLAIMS_PER_ENTITY` per entity in file order.
     claims_by_entity: tuple[tuple[Claim, ...], ...] = ()
+    #: 5.3.0: per roster entity, how many claims after the first `MAX_CLAIMS_PER_ENTITY` were
+    #: ignored (not judged, not counted). Empty when built without the cap (old callers).
+    ignored_claims_by_entity: tuple[int, ...] = ()
+    #: 5.3.0: the citations of the ignored claims, read only by the structural date check
+    #: (`all_citations`), never by a per-claim check.
+    ignored_citations_by_entity: tuple[tuple[Mapping[str, Any], ...], ...] = ()
 
     @property
     def count(self) -> int:
@@ -199,7 +223,17 @@ class AlignedPredictions:
         ]
 
     def all_citations(self) -> list[Mapping[str, Any]]:
-        return [cite for group in self.citations_by_entity for cite in group]
+        """The citations the structural date check (unresolved, undated, post-cutoff) reads: the
+        counted claims', and the ignored claims' too while `DATE_CHECK_COVERS_IGNORED_CLAIMS`."""
+        groups = [self.citations_by_entity]
+        if DATE_CHECK_COVERS_IGNORED_CLAIMS:
+            groups.append(self.ignored_citations_by_entity)
+        return [cite for kind in groups for group in kind for cite in group]
+
+    @property
+    def ignored_claim_count(self) -> int:
+        """Claims ignored by the per-entity cap, over the whole unit (5.3.0)."""
+        return sum(self.ignored_claims_by_entity)
 
 
 def _finite(value: Any, *, what: str) -> float:
@@ -363,7 +397,16 @@ def _with_int_offsets(cite: Mapping[str, Any], entity_id: str) -> Mapping[str, A
 
 def _citations(
     row: Mapping[str, Any], entity_id: str
-) -> tuple[tuple[Mapping[str, Any], ...], tuple[str, ...], tuple[Claim, ...]]:
+) -> tuple[
+    tuple[Mapping[str, Any], ...],
+    tuple[str, ...],
+    tuple[Claim, ...],
+    tuple[Mapping[str, Any], ...],
+]:
+    """The entity's counted citations, claim texts and claims (the first `MAX_CLAIMS_PER_ENTITY`
+    in file order), and the citations of the claims after them, which are ignored (5.3.0) and
+    read only by the structural date check. Every claim, ignored or not, must be an object with
+    integer offsets: that is the answer's shape, not a per-claim verdict."""
     claims = row.get("claims")
     if not isinstance(claims, list) or not claims:
         raise T4ParticipantFailure(
@@ -374,7 +417,8 @@ def _citations(
     cites: list[Mapping[str, Any]] = []
     texts: list[str] = []
     grouped: list[Claim] = []
-    for claim in claims:
+    ignored: list[Mapping[str, Any]] = []
+    for position, claim in enumerate(claims):
         if not isinstance(claim, Mapping):
             raise T4ParticipantFailure(
                 T4Reason.CITATION_MALFORMED,
@@ -386,6 +430,10 @@ def _citations(
         # still carries the key is false (malformed, never put to the judge), the list is not
         # read, and the claim's own span is checked like every other claim's.
         cite = _with_int_offsets(claim, entity_id)
+        if position >= MAX_CLAIMS_PER_ENTITY:
+            # 5.3.0: ignored, not penalised. Kept only for the structural date check.
+            ignored.append(cite)
+            continue
         cites.append(cite)
         own: tuple[Mapping[str, Any], ...] = (cite,)
         text, malformed = _claim_text(claim)
@@ -403,7 +451,7 @@ def _citations(
             f"entity {entity_id} has claims but no citations",
             invalid_row_count=1,
         )
-    return tuple(cites), tuple(texts), tuple(grouped)
+    return tuple(cites), tuple(texts), tuple(grouped), tuple(ignored)
 
 
 def align_predictions(
@@ -443,6 +491,7 @@ def align_predictions(
     cites: list[tuple[Mapping[str, Any], ...]] = []
     texts: list[tuple[str, ...]] = []
     grouped: list[tuple[Claim, ...]] = []
+    ignored: list[tuple[Mapping[str, Any], ...]] = []
 
     for entity_id in roster.entity_ids:
         row = by_id[entity_id]
@@ -496,10 +545,13 @@ def align_predictions(
         else:
             ranks.append(raw_rank)
 
-        entity_cites, entity_texts, entity_claims = _citations(row, entity_id)
+        entity_cites, entity_texts, entity_claims, entity_ignored = _citations(
+            row, entity_id
+        )
         cites.append(entity_cites)
         texts.append(entity_texts)
         grouped.append(entity_claims)
+        ignored.append(entity_ignored)
 
     supplied_ranks = [r for r in ranks if r is not None]
     if supplied_ranks:
@@ -528,4 +580,6 @@ def align_predictions(
         citations_by_entity=tuple(cites),
         claim_texts_by_entity=tuple(texts),
         claims_by_entity=tuple(grouped),
+        ignored_claims_by_entity=tuple(len(group) for group in ignored),
+        ignored_citations_by_entity=tuple(ignored),
     )

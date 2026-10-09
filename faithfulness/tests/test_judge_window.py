@@ -116,7 +116,13 @@ def _loader(monkeypatch: pytest.MonkeyPatch, windows: dict[str, int]) -> None:
         class Pipeline:
             tokenizer = _tokenizer(windows[kwargs["model"]])
 
-            def __call__(self, **_: Any) -> dict[str, Any]:
+            def preprocess(self, *_: Any, **__: Any) -> Any:
+                yield {}
+
+            def forward(self, inputs: Any) -> Any:
+                return inputs
+
+            def postprocess(self, *_: Any, **__: Any) -> dict[str, Any]:
                 return {"scores": [0.75]}
 
         return Pipeline()

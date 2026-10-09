@@ -86,17 +86,17 @@ class _Pipeline:
         },
     )()
 
-    def __call__(
-        self, **_: Any
-    ) -> dict[str, Any]:  # `entail` (prediction_relevance only)
-        return {"scores": [0.5]}
-
     def preprocess(self, sequences: Any, **kwargs: Any) -> Any:
         yield {"hypothesis": kwargs["candidate_labels"][0]}
 
     def forward(self, inputs: Any) -> dict[str, Any]:
         contra = inputs["hypothesis"] == FALSE_CLAIM
         return {"logits": _Logits([0.0, 0.0, 9.0] if contra else [0.0, 9.0, 0.0])}
+
+    def postprocess(
+        self, *_: Any, **__: Any
+    ) -> dict[str, Any]:  # `entail` (prediction_relevance only)
+        return {"scores": [0.5]}
 
 
 def _local() -> WindowedEnsembleNLIJudge:
