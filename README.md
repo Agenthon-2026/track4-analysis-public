@@ -173,8 +173,10 @@ computed at all. Verified by running the scorer on each case.
 
 The image-size row remains the published recommendation and rejection policy; it is not a
 verified automatically enforced image-size quota. The image-layer limit is a different resource.
-See the [image submission guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.1/docs/IMAGE-SUBMISSIONS.md)
-for anonymous public pulls and organizer-confirmed private mirrors.
+See the [image submission guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/main/docs/IMAGE-SUBMISSIONS.md)
+for anonymous public pulls. There's no private-image route in Agenthon 2026: your image must be
+anonymously pullable. A public image can be pulled by anyone, including the files and model
+artifacts inside it; leave out anything you don't want to share.
 
 The Final cannot run an image that declares a Docker `VOLUME`, including one inherited from its base
 image. Such an upload is marked Failed when its run starts and does not use an attempt; remove the
