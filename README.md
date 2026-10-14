@@ -202,7 +202,7 @@ that hits the time limit scores `resource_timeout`, and one killed for memory `r
 In the Final, a canary string anywhere in the output is scored as contamination.
 
 For CPU, memory and GPU settings, read the unit card and the
-[Development runtime guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.5.1/docs/DEVELOPMENT-RUNTIME.md).
+[Development runtime guide](https://github.com/Agenthon-2026/Agenthon2026-public/blob/v2.6.1/docs/DEVELOPMENT-RUNTIME.md).
 The `api` category does not remove a card's GPU grant for permitted local code or authorize
 an additional model server. The unit clock includes container creation and any required pull;
 the ingestion stage has a separate 12-hour clock across sequential units, and scoring has its
@@ -285,9 +285,9 @@ a ceiling rather than a floor (`nemoguardrails` and `nvidia-nat` both pin `<3.14
 Track 4 inherits scoring utilities from the shared toolkit repository. Install them with:
 
 ```bash
-# Pin toolkit v2.5.1 for the current submission commands and fixtures.
-# The installed package reports version 2.5.1.
-pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.5.1#subdirectory=common"
+# Pin toolkit v2.6.1 for the current submission commands and fixtures.
+# The installed package reports version 2.6.1.
+pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.6.1#subdirectory=common"
 ```
 
 > **Pin a tag, never a branch.** Installing from a moving ref means your local result and your
@@ -501,7 +501,7 @@ non-rankable; it checks the interface, not prediction accuracy or production fai
 # baselines/requirements.txt is comments only -- the minimal baseline is standard library
 # by design -- so this line installs nothing. It is here because steps 4 to 6 need the
 # shared toolkit, which brings jsonschema with it.
-pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.5.1#subdirectory=common"
+pip install "qfbench2-common @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@v2.6.1#subdirectory=common"
 
 # 2. Run the RAG baseline
 python baselines/baseline_agent.py \
